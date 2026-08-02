@@ -463,19 +463,19 @@ function renderToday(){
     `${d.getMonth()+1}월 ${d.getDate()}일 ${DAY[d.getDay()]}요일${isToday?" · 오늘":""}`;
   const t = document.getElementById("title");
   t.textContent = kind==="gym" ? (d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
-                : kind==="light" ? "가볍게 2종" : "쉬는 날 · 체력단련실 휴무";
+                : kind==="light" ? "가볍게 4종" : "쉬는 날 · 체력단련실 휴무";
   t.style.color = kind==="gym" ? "var(--dawn)" : kind==="light" ? "var(--sage)" : "var(--dim)";
 
   const box = document.getElementById("today");
   box.innerHTML = "";
 
   if(kind==="gym" || kind==="light"){
-    const todayEx = kind==="light" ? EX.filter(e => lightSet(d.getDay()).includes(e.id)) : EX;
+    const todayEx = EX;
     if(kind==="light"){
       const info = document.createElement("div"); info.className="card";
       info.style.cssText = "background:var(--tint);border-color:var(--sage)";
       info.innerHTML = `<b style="font-size:14px;color:var(--sage)">가볍게 하는 날</b>
-        <div class="muted" style="font-size:12px;margin-top:4px">2종만 12회 2세트. 약 12분.
+        <div class="muted" style="font-size:12px;margin-top:4px">4종 전부, 12회 2세트씩. 약 16분.
         근육은 쉬는 동안 자랍니다 — 매일 전력으로 하면 오히려 손해예요.</div>`;
       box.appendChild(info);
     }
@@ -800,7 +800,7 @@ function coachStop(){
 function coachPlan(){
   const dow = new Date().getDay();
   const k = kindOf(dow);
-  if(k === "light") return EX.filter(e => lightSet(dow).includes(e.id)).map(e => ({...e, sets:2}));
+  if(k === "light") return EX.map(e => ({...e, sets:2}));
   return EX;
 }
 function coachStart(){
