@@ -391,9 +391,14 @@ function rec(){
   r.yoga = r.yoga || {part:null,done:false};
   return r;
 }
-function setsOf(r, id, kind){ 
+function setsOf(r, id, kind){
   const n = kind==="light" ? 2 : EX.find(e=>e.id===id).sets;
-  if(!Array.isArray(r.sets[id]) || r.sets[id].length !== n) r.sets[id] = Array(n).fill(false);
+  const cur = Array.isArray(r.sets[id]) ? r.sets[id] : [];
+  if(cur.length !== n){
+    const next = Array(n).fill(false);
+    for(let i=0; i<Math.min(cur.length, n); i++) next[i] = !!cur[i];
+    r.sets[id] = next;
+  }
   return r.sets[id];
 }
 function mutate(fn){ const r = rec(); fn(r); persist(); render(); }
@@ -507,7 +512,7 @@ function renderToday(){
       arr.forEach((on,ix) => {
         const sb2 = document.createElement("button");
         sb2.className = "setbtn" + (on?" on":""); sb2.textContent = (ix+1)+"세트";
-        sb2.onclick = () => mutate(x => { setsOf(x,e.id)[ix] = !on; });
+        sb2.onclick = () => mutate(x => { setsOf(x, e.id, kind)[ix] = !on; });
         row.appendChild(sb2);
       });
       const kg = document.createElement("input");
