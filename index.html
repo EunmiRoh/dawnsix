@@ -205,7 +205,7 @@
   <section id="tab-home" class="hide">
     <h1 style="margin-bottom:6px">집에서 10분</h1>
     <p class="muted" style="margin:0 0 16px">
-      체력단련실에 못 갈 때. 기구도 매트도 필요 없습니다. 10분도 무리면 스쿼트 20개 한 세트만 해도 인정입니다.
+      체력단련실에 못 갈 때. 기구 없이 집에서. 층간소음 없는 동작만 골랐습니다. 시간이 없으면 "짧게"를 고르세요.
     </p>
     <div id="home-body"></div>
     <div id="home-ctrl" style="display:flex;gap:8px;margin-top:16px"></div>
@@ -283,29 +283,102 @@ const MEALS = [
 
 /* ─────────── 집 운동 ─────────── */
 const HOME = [
-  { id:"hsquat", name:"의자 스쿼트", reps:20, sets:3, tempo:3000,
+  { id:"warmwalk", group:"준비", name:"제자리 걷기", hold:true, dur:60, sets:1, tempo:1000, short:true,
+    cue:"팔을 크게 흔들며 가볍게. 층간소음 없게 발은 살살",
+    call:"어깨 힘 빼세요",
+    steps:["제자리에서 무릎을 가볍게 들며 걷는다",
+           "팔을 앞뒤로 크게 흔든다",
+           "발은 쿵쿵 딛지 말고 살살 내려놓는다",
+           "몸이 데워지는 정도면 충분하다"] },
+
+  { id:"warmarm", group:"준비", name:"어깨·팔 풀기", hold:true, dur:45, sets:1, tempo:1000, short:true,
+    cue:"어깨를 크게 뒤로 돌리기",
+    call:"천천히 크게",
+    steps:["양팔을 어깨에 얹고 팔꿈치로 큰 원을 그린다",
+           "뒤로 10회, 앞으로 10회",
+           "목도 좌우로 천천히 기울여 준다"] },
+
+  { id:"hsquat", group:"하체", name:"의자 스쿼트", reps:20, sets:3, tempo:3000, short:true,
     cue:"엉덩이 먼저 뒤로. 의자에 살짝 닿았다 일어나기",
     call:"엉덩이 먼저 뒤로",
     steps:["식탁 의자를 뒤에 두고 발은 어깨너비로 선다",
            "엉덩이를 뒤로 빼면서 의자에 살짝 닿았다가 바로 일어난다",
            "완전히 앉지 않는 것이 핵심. 무릎보다 엉덩이가 먼저 움직인다",
            "무릎이 안쪽으로 모이면 발을 조금 더 벌린다"] },
-  { id:"hpush", name:"벽 푸시업", reps:10, sets:3, tempo:3000,
+
+  { id:"hbridge", group:"하체", name:"힙 브리지", reps:15, sets:3, tempo:3000,
+    cue:"엉덩이에 힘주고 들어올리기. 허리로 젖히지 않기",
+    call:"엉덩이에 힘",
+    steps:["바닥에 누워 무릎을 세우고 발을 엉덩이 가까이 둔다",
+           "발뒤꿈치로 바닥을 밀며 엉덩이를 들어올린다",
+           "무릎-엉덩이-어깨가 일직선이 되면 1초 멈춘다",
+           "허리를 젖히지 말고 엉덩이 힘으로만 든다"] },
+
+  { id:"hwallsit", group:"하체", name:"벽 앉기", hold:true, dur:30, sets:3, tempo:1000,
+    cue:"허벅지가 바닥과 평행하게. 30초 버티기",
+    call:"조금만 더",
+    steps:["벽에 등을 붙이고 미끄러지듯 내려간다",
+           "무릎이 90도, 허벅지가 바닥과 평행한 위치에서 멈춘다",
+           "무릎이 발끝보다 앞으로 나가지 않게 발을 앞에 둔다",
+           "힘들면 조금 덜 내려가도 된다"] },
+
+  { id:"hsideleg", group:"하체", name:"옆으로 다리 들기", reps:12, sets:2, tempo:2500,
+    cue:"좌우 각각. 골반이 뒤로 넘어가지 않게",
+    call:"골반 고정",
+    steps:["옆으로 누워 아래쪽 팔로 머리를 받친다",
+           "위쪽 다리를 곧게 편 채 천천히 들어올린다",
+           "12회 후 반대쪽으로 돌아 반복",
+           "엉덩이 옆쪽이 당기는 느낌이 나면 정확한 자세"] },
+
+  { id:"hpush", group:"상체", name:"벽 푸시업", reps:12, sets:3, tempo:3000, short:true,
     cue:"몸은 일자로. 허리가 꺾이지 않게 배에 힘",
     call:"배에 힘 주세요",
     steps:["벽에서 한 팔 길이 떨어져 서서 손바닥을 어깨 높이 벽에 붙인다",
            "몸을 일자로 유지한 채 팔꿈치를 굽혀 가슴이 벽에 가까워지게 한다",
            "밀어내며 제자리로. 허리가 꺾이지 않게 배에 힘",
            "쉬우면 발을 벽에서 더 멀리 둔다"] },
-  { id:"hplank", name:"무릎 플랭크", reps:1, sets:3, tempo:20000, hold:true,
+
+  { id:"hsuper", group:"상체", name:"슈퍼맨", reps:12, sets:2, tempo:3000,
+    cue:"팔다리를 살짝만 들고 1초 멈추기",
+    call:"목은 편하게",
+    steps:["바닥에 엎드려 팔을 앞으로 뻗는다",
+           "팔과 다리를 동시에 살짝 들어올리고 1초 멈춘다",
+           "높이 들 필요 없다. 등 아래쪽이 조여지면 충분",
+           "목은 바닥을 보는 상태로 편하게"] },
+
+  { id:"hbirddog", group:"코어", name:"버드독", reps:10, sets:2, tempo:3500,
+    cue:"반대쪽 팔다리를 뻗고 1초 멈추기. 좌우 번갈아",
+    call:"허리 흔들리지 않게",
+    steps:["네발기기 자세로 손은 어깨 아래, 무릎은 골반 아래",
+           "오른팔과 왼다리를 동시에 뻗어 1초 멈춘다",
+           "돌아와서 반대쪽. 이렇게 좌우 한 번이 1회",
+           "허리가 좌우로 흔들리지 않게 배에 힘"] },
+
+  { id:"hplank", group:"코어", name:"무릎 플랭크", hold:true, dur:20, sets:3, tempo:1000, short:true,
     cue:"무릎부터 머리까지 일자. 20초 버티기",
     call:"엉덩이 내리지 마세요",
     steps:["바닥에 팔꿈치와 무릎을 대고 엎드린다",
            "무릎부터 머리까지 일자를 유지한다",
            "엉덩이가 솟거나 허리가 내려가지 않게",
            "20초가 힘들면 10초씩 나눠서"] },
-];
 
+  { id:"hdeadbug", group:"코어", name:"데드버그", reps:10, sets:2, tempo:3500,
+    cue:"허리를 바닥에 붙인 채 반대쪽 팔다리 뻗기",
+    call:"허리를 바닥에",
+    steps:["누워서 팔은 천장으로, 무릎은 90도로 든다",
+           "오른팔과 왼다리를 천천히 바닥 쪽으로 뻗는다",
+           "허리가 바닥에서 뜨지 않는 범위까지만",
+           "돌아와서 반대쪽. 좌우 한 번이 1회"] },
+
+  { id:"cooldown", group:"마무리", name:"스트레칭", hold:true, dur:60, sets:1, tempo:1000, short:true,
+    cue:"허벅지 뒤·엉덩이·가슴을 천천히 늘리기",
+    call:"숨 참지 마세요",
+    steps:["앉아서 다리를 뻗고 상체를 천천히 숙인다 (허벅지 뒤)",
+           "누워서 한쪽 무릎을 가슴으로 당긴다 (엉덩이)",
+           "문틀에 팔을 대고 몸을 앞으로 밀어준다 (가슴)",
+           "각 20초씩. 숨을 참지 말고 천천히"] },
+];
+const HOME_REST = 40;
 const BACKUP = ["의자 스쿼트 20회 × 3세트","벽 푸시업 10회 × 3세트","무릎 플랭크 20초 × 3회"];
 const DAY = ["일","월","화","수","목","금","토"];
 const LKEY = "dawnsix-log-v1";
@@ -452,7 +525,7 @@ function renderStrip(){
   weekOf(dateKey).forEach(w => {
     const b = document.createElement("button");
     b.className = "day" + (w.k===dateKey ? " sel" : "");
-    const col = w.kind==="gym" ? "var(--dawn)" : w.kind==="light" ? "var(--sage)" : "var(--line)";
+    const col = w.kind==="gym" ? "var(--dawn)" : w.kind==="light" ? "var(--sage)" : (w.r?.backup ? "var(--rose)" : "var(--line)");
     const h = Math.max(w.ratio*100, w.r?.arrived ? 22 : w.r?.backup ? 14 : w.kind==="rest" ? 0 : 4);
     const lit = w.ratio>0 || w.r?.arrived || w.r?.backup;
     b.innerHTML = `<i class="fill" style="height:${h}%;background:${col};opacity:${lit?.9:.28}"></i><span>${DAY[w.dow]}</span>`;
@@ -468,7 +541,7 @@ function renderToday(){
     `${d.getMonth()+1}월 ${d.getDate()}일 ${DAY[d.getDay()]}요일${isToday?" · 오늘":""}`;
   const t = document.getElementById("title");
   t.textContent = kind==="gym" ? (d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
-                : kind==="light" ? "가볍게 4종" : "쉬는 날 · 체력단련실 휴무";
+                : kind==="light" ? "가볍게 4종" : "체력단련실 휴무 · 집에서 자유롭게";
   t.style.color = kind==="gym" ? "var(--dawn)" : kind==="light" ? "var(--sage)" : "var(--dim)";
 
   const box = document.getElementById("today");
@@ -577,8 +650,25 @@ function renderToday(){
 
   if(kind==="rest"){
     const c = document.createElement("div"); c.className = "card";
-    c.innerHTML = `<div class="muted">체력단련실 휴무일입니다. 근육은 쉬는 동안 자라니 오늘은 단백질만 채우면 성공. 요가나 걷기는 자유입니다.</div>`;
+    c.innerHTML = `<b style="font-size:15px">체력단련실 휴무일</b>
+      <div class="muted" style="font-size:13px;margin-top:6px">
+        쉬어도 되는 날입니다. 단백질만 채우면 성공.
+        그래도 몸이 움직이고 싶으면 아래에서 골라 하세요 — 하는 걸 막을 이유는 없습니다.</div>`;
     box.appendChild(c);
+
+    const rest1 = document.createElement("button");
+    rest1.style.cssText = "width:100%;height:52px;margin-top:10px;font-size:14px;font-weight:700;border-radius:12px;background:var(--tint);border:1px solid var(--dawn);color:var(--dawn)";
+    rest1.textContent = "집 운동 코치와 함께 하기";
+    rest1.onclick = () => { goTab("home"); if(HO.phase === "idle") homeStart(); };
+    box.appendChild(rest1);
+
+    const rest2 = document.createElement("button");
+    const rdone = rec().backup;
+    rest2.style.cssText = "width:100%;height:46px;margin-top:8px;font-size:13px;font-weight:700;border-radius:12px" +
+      (rdone ? ";background:var(--mist);color:#fff;border-color:var(--mist)" : ";color:var(--dim)");
+    rest2.textContent = rdone ? "오늘 집에서 운동했습니다" : "집에서 운동했다";
+    rest2.onclick = () => mutate(x => { x.backup = !x.backup; });
+    box.appendChild(rest2);
   }
 
   if(kind!=="rest"){
@@ -717,7 +807,7 @@ function barChart(points){
 function renderTrend(){
   const days = Object.keys(log).sort();
   const lab = k => `${parseKey(k).getMonth()+1}/${parseKey(k).getDate()}`;
-  const gym = days.filter(k => isGymDay(parseKey(k).getDay()) && gymOK(log[k])).length;
+  const gym = days.filter(k => (isGymDay(parseKey(k).getDay()) && gymOK(log[k])) || (!isGymDay(parseKey(k).getDay()) && log[k]?.backup)).length;
   const yoga = days.filter(k => log[k]?.yoga?.done).length;
   const backup = days.filter(k => log[k]?.backup).length;
   document.getElementById("stats").innerHTML =
@@ -748,7 +838,7 @@ function renderTrend(){
     if(r.bodyWeight) bits.push(`체중 ${r.bodyWeight}`);
     if(isGymDay(parseKey(k).getDay())) bits.push(gymOK(r) ? (kind==="light"?"가볍게 O":"헬스 O") : "헬스 —");
     if(r.yoga?.done) bits.push("요가 O");
-    if(r.backup) bits.push("대체");
+    if(r.backup) bits.push(isGymDay(parseKey(k).getDay()) ? "대체" : "집운동");
     bits.push(`단백질 ${proteinOf(r)}g`);
     return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
       <div class="row"><b style="font-size:14px">${lab(k)} (${DAY[parseKey(k).getDay()]})</b>
@@ -942,7 +1032,13 @@ document.getElementById("c-tempo").onclick = () => {
 
 
 /* ─────────── 집 운동 코치 ─────────── */
-const HO = { phase:"idle", ex:0, set:0, rep:0, count:0, timer:null };
+const HO = { phase:"idle", ex:0, set:0, rep:0, count:0, timer:null, mode:"full", list:[] };
+function homeList(){ return HO.mode==="short" ? HOME.filter(x=>x.short) : HOME; }
+function homeMinutes(list){
+  let s = 0;
+  list.forEach(x => { const per = x.hold ? x.dur : x.reps * (x.tempo/1000); s += x.sets*per + (x.sets-1)*HOME_REST; });
+  return Math.round((s + list.length*8) / 60);
+}
 
 function homeStop(){
   clearInterval(HO.timer); HO.timer = null; bgmOff();
@@ -950,9 +1046,10 @@ function homeStop(){
   HO.phase = "idle"; renderHome();
 }
 function homeStart(){
+  HO.list = homeList();
   HO.ex = 0; HO.set = 0; HO.rep = 0; HO.count = 5; HO.phase = "ready";
   if(CO.bgm) bgmOn();
-  say(`${HOME[0].name} ${HOME[0].reps}회. 5초 후 시작합니다.`);
+  say(`${HO.list[0].name}. 5초 후 시작합니다.`);
   clearInterval(HO.timer);
   HO.timer = setInterval(() => {
     HO.count--;
@@ -962,14 +1059,15 @@ function homeStart(){
 }
 function homeReps(){
   clearInterval(HO.timer);
-  const e = HOME[HO.ex];
+  const e = HO.list[HO.ex];
   HO.phase = "rep"; HO.rep = 0; renderHome();
   if(e.hold){
     // 플랭크: 초 세기
-    HO.count = 20; say("시작. 20초 버티세요.");
+    HO.count = e.dur; say(`시작. ${e.dur}초.`);
     HO.timer = setInterval(() => {
       HO.count--;
-      if(HO.count===10) say("10초 남았습니다.");
+      if(HO.count===Math.floor(e.dur/2) && e.dur>=30) say(`${HO.count}초 남았습니다.`);
+      if(HO.count===10 && e.dur>20) say("10초 남았습니다.");
       if(HO.count===5) say(e.call);
       if(HO.count<=3 && HO.count>0) say(String(HO.count));
       if(HO.count<=0){ clearInterval(HO.timer); finishSet(); }
@@ -987,28 +1085,34 @@ function homeReps(){
   }, e.tempo);
 }
 function finishSet(){
-  const e = HOME[HO.ex];
-  const last = HO.set >= e.sets-1, lastEx = HO.ex >= HOME.length-1;
+  const e = HO.list[HO.ex];
+  const last = HO.set >= e.sets-1, lastEx = HO.ex >= HO.list.length-1;
+  if(last && !lastEx && e.sets === 1){
+    HO.ex++; HO.set = 0;
+    say(HO.list[HO.ex].hold ? `${HO.list[HO.ex].name} ${HO.list[HO.ex].dur}초.` : `${HO.list[HO.ex].name} ${HO.list[HO.ex].reps}회.`);
+    setTimeout(homeReps, 900);
+    return;
+  }
   // 기록: 집 운동을 완료하면 대체 운동으로 체크
   if(last && lastEx){
     const r = rec(); r.backup = true; persist();
     setTimeout(() => { say("전부 끝났습니다. 오늘도 성공입니다."); HO.phase = "done"; bgmOff(); renderHome(); }, 700);
     return;
   }
-  setTimeout(() => { say("세트 완료. 45초 휴식."); homeRest(); }, 700);
+  setTimeout(() => { say(`세트 완료. ${HOME_REST}초 휴식.`); homeRest(); }, 700);
 }
 function homeRest(){
   clearInterval(HO.timer);
-  HO.phase = "rest"; HO.count = 45; renderHome();
+  HO.phase = "rest"; HO.count = HOME_REST; renderHome();
   HO.timer = setInterval(() => {
     HO.count--;
     if(HO.count<=0){
-      const e = HOME[HO.ex];
-      if(HO.set >= e.sets-1){ HO.ex++; HO.set = 0; say(`${HOME[HO.ex].name} ${HOME[HO.ex].reps}회.`); }
+      const e = HO.list[HO.ex];
+      if(HO.set >= e.sets-1){ HO.ex++; HO.set = 0; say(HO.list[HO.ex].hold ? `${HO.list[HO.ex].name} ${HO.list[HO.ex].dur}초.` : `${HO.list[HO.ex].name} ${HO.list[HO.ex].reps}회.`); }
       else { HO.set++; say(`${HO.set+1}세트 시작.`); }
       homeReps();
     } else {
-      if(HO.count===15) say("15초 남았습니다.");
+      if(HO.count===15) say("15초.");
       if(HO.count<=3) say(String(HO.count));
       renderHome();
     }
@@ -1017,25 +1121,42 @@ function homeRest(){
 function homeSkip(){
   clearInterval(HO.timer);
   if(window.speechSynthesis) window.speechSynthesis.cancel();
-  if(HO.ex >= HOME.length-1){ const r = rec(); r.backup = true; persist(); HO.phase = "done"; bgmOff(); renderHome(); return; }
+  if(HO.ex >= HO.list.length-1){ const r = rec(); r.backup = true; persist(); HO.phase = "done"; bgmOff(); renderHome(); return; }
   HO.ex++; HO.set = 0; HO.count = 5; HO.phase = "ready";
-  say(`${HOME[HO.ex].name} ${HOME[HO.ex].reps}회.`);
+  say(HO.list[HO.ex].hold ? `${HO.list[HO.ex].name} ${HO.list[HO.ex].dur}초.` : `${HO.list[HO.ex].name} ${HO.list[HO.ex].reps}회.`);
   HO.timer = setInterval(() => { HO.count--; if(HO.count<=0) homeReps(); else renderHome(); }, 1000);
   renderHome();
 }
 
 function renderHome(){
+  if(!HO.list.length) HO.list = homeList();
   const body = document.getElementById("home-body");
-  const e = HOME[Math.min(HO.ex, HOME.length-1)];
-  const total = HOME.reduce((s,x)=>s+x.sets,0);
-  const done = HOME.slice(0,HO.ex).reduce((s,x)=>s+x.sets,0) + HO.set;
+  const e = HO.list[Math.min(HO.ex, HO.list.length-1)];
+  const total = HO.list.reduce((s,x)=>s+x.sets,0);
+  const done = HO.list.slice(0,HO.ex).reduce((s,x)=>s+x.sets,0) + HO.set;
 
   if(HO.phase==="idle"){
-    body.innerHTML = `<div class="card" style="text-align:center;padding:26px 16px">
-      <div style="font-size:26px;font-weight:800;color:var(--dawn);margin-bottom:6px">3동작 · ${total}세트</div>
-      <div class="muted" style="font-size:13px">${HOME.map(x=>`${x.name} ${x.hold?"20초":x.reps+"회"}`).join(" → ")}</div>
-      <div class="muted" style="font-size:12px;margin-top:8px">약 10분 · 음성이 세어줍니다</div>
-    </div>`;
+    const list = homeList();
+    const groups = [...new Set(list.map(x=>x.group))];
+    body.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button id="m-full" style="flex:1;height:44px;border-radius:10px;font-size:13px;font-weight:700;${HO.mode==="full"?"background:var(--dawn);color:#fff;border-color:var(--dawn)":"color:var(--dim)"}">기본 (전체)</button>
+        <button id="m-short" style="flex:1;height:44px;border-radius:10px;font-size:13px;font-weight:700;${HO.mode==="short"?"background:var(--dawn);color:#fff;border-color:var(--dawn)":"color:var(--dim)"}">짧게</button>
+      </div>
+      <div class="card" style="text-align:center;padding:22px 16px">
+        <div style="font-size:26px;font-weight:800;color:var(--dawn)">${list.length}동작 · ${list.reduce((s,x)=>s+x.sets,0)}세트</div>
+        <div class="muted" style="font-size:13px;margin-top:4px">약 ${homeMinutes(list)}분 · 음성이 세어줍니다</div>
+      </div>
+      ${groups.map(g => `<div class="card" style="padding:12px 14px">
+        <div style="font-size:12px;color:var(--dawn);letter-spacing:.1em;margin-bottom:6px">${g}</div>
+        ${list.filter(x=>x.group===g).map(x=>`<div class="row" style="padding:3px 0">
+          <span style="font-size:14px">${x.name}</span>
+          <span class="muted" style="font-size:12px">${x.hold?x.dur+"초":x.reps+"회"} × ${x.sets}</span>
+        </div>`).join("")}
+      </div>`).join("")}`;
+    const bf = document.getElementById("m-full"), bs = document.getElementById("m-short");
+    if(bf) bf.onclick = () => { HO.mode="full"; HO.list=[]; renderHome(); };
+    if(bs) bs.onclick = () => { HO.mode="short"; HO.list=[]; renderHome(); };
   } else if(HO.phase==="ready"){
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div class="muted" style="font-size:14px">${e.name} 준비</div>
@@ -1045,7 +1166,7 @@ function renderHome(){
     const big = e.hold ? HO.count : HO.rep;
     const unit = e.hold ? "초 남음" : `/ ${e.reps}회`;
     body.innerHTML = `<div class="card" style="text-align:center;padding:26px 16px">
-      <div style="font-size:12px;color:var(--dawn);letter-spacing:.12em">${HO.set+1}세트 / ${e.sets}</div>
+      <div style="font-size:12px;color:var(--dawn);letter-spacing:.12em">${e.group} · ${HO.set+1}세트 / ${e.sets}</div>
       <div style="font-size:20px;font-weight:700;margin:6px 0 8px">${e.name}</div>
       <div style="font-size:92px;font-weight:800;line-height:1">${big}</div>
       <div class="muted" style="font-size:13px">${unit}</div>
@@ -1054,7 +1175,7 @@ function renderHome(){
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div style="color:var(--sage);font-size:14px">휴식</div>
       <div style="font-size:72px;font-weight:800;color:var(--sage);line-height:1.1">${HO.count}</div>
-      <div class="muted" style="font-size:13px">${HO.set >= e.sets-1 ? `다음: ${HOME[Math.min(HO.ex+1,HOME.length-1)].name}` : `${HO.set+2}세트 준비`}</div></div>`;
+      <div class="muted" style="font-size:13px">${HO.set >= e.sets-1 ? `다음: ${HO.list[Math.min(HO.ex+1,HO.list.length-1)].name}` : `${HO.set+2}세트 준비`}</div></div>`;
   } else {
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div style="font-size:24px;font-weight:800;color:var(--sage)">끝났습니다</div>
@@ -1078,8 +1199,8 @@ function renderHome(){
     man.innerHTML = HOME.map((x,i) => `<div class="card">
       <div class="row" style="margin-bottom:6px">
         <b style="font-size:16px"><span style="color:var(--dawn);font-size:12px">${i+1}</span>
-        <span style="margin-left:8px">${x.name}</span></b>
-        <span class="muted" style="font-size:12px">${x.hold?"20초":x.reps+"회"} × ${x.sets}세트</span>
+        <span style="margin-left:8px">${x.name}</span><span class="muted" style="font-size:11px;margin-left:6px;font-weight:400">${x.group}</span></b>
+        <span class="muted" style="font-size:12px">${x.hold?x.dur+"초":x.reps+"회"} × ${x.sets}세트</span>
       </div>
       <ol class="muted" style="font-size:13px;padding-left:18px;margin:0">
         ${x.steps.map(s=>`<li style="margin-bottom:4px">${s}</li>`).join("")}
