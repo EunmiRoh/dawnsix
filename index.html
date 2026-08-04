@@ -163,6 +163,20 @@
       </ol>
     </div>
 
+    <div class="card" style="background:var(--tint);border-color:var(--dawn)">
+      <b style="font-size:14px;color:var(--dawn)">레그컬 대신 레그익스텐션</b>
+      <div class="muted" style="font-size:13px;margin-top:6px">
+        레그컬을 누가 쓰고 있으면 기다리지 말고 <b style="color:var(--mist)">레그익스텐션</b>으로 바꾸세요.
+        오늘 화면의 4번 종목에서 전환 버튼을 누르면 됩니다. 무게는 15kg부터.
+      </div>
+      <ol class="muted" style="font-size:13px;padding-left:18px;margin:10px 0 0">
+        <li>앉아서 등을 등받이에 붙이고 발목 패드를 정강이 아래에 맞춘다</li>
+        <li>무릎을 천천히 펴서 1초 멈춘다</li>
+        <li>반동을 쓰지 말고 천천히 내린다</li>
+        <li>무릎이 아프면 끝까지 펴지 말고 살짝 덜 편 상태에서 멈춘다</li>
+      </ol>
+    </div>
+
     <h2>8월 무게 계획</h2>
     <div class="card" style="padding:6px 14px 14px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -269,7 +283,8 @@ const EX = [
   { id:"leg",   name:"레그프레스",   sets:3, cue:"무릎 90도까지만. 끝에서 무릎 잠그지 않기" },
   { id:"lat",   name:"랫풀다운",     sets:2, cue:"바를 가슴 위쪽까지. 팔 대신 등으로 당기기" },
   { id:"chest", name:"체스트프레스", sets:3, cue:"가로 손잡이. 끝까지 쭉 펴지 않기" },
-  { id:"curl",  name:"레그컬",       sets:2, cue:"발뒤꿈치를 엉덩이 쪽으로. 허리 들리지 않게" },
+  { id:"curl",  name:"레그컬", sets:2, cue:"발뒤꿈치를 엉덩이 쪽으로. 허리 들리지 않게",
+    alt:{ id:"ext", name:"레그익스텐션", cue:"무릎을 천천히 펴고 1초 멈추기. 반동 쓰지 않기" } },
 ];
 const MEALS = [
   { id:"egg",     label:"삶은 계란",        unit:"개당", g:6 },
@@ -390,11 +405,11 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
-  if(kind==="gym"){ const all = EX.flatMap(e => r.sets?.[e.id] || []); return all.length ? all.filter(Boolean).length/all.length : 0; }
+  if(kind==="gym" || kind==="light"){ const all = EX.flatMap(e => { const id = (e.alt && r.pick?.[e.id]===e.alt.id) ? e.alt.id : e.id; return r.sets?.[id] || []; }); return all.length ? all.filter(Boolean).length/all.length : 0; }
   if(kind==="yoga") return r.yoga?.done ? 1 : 0;
   return 0;
 };
@@ -460,7 +475,7 @@ function push(){
 function rec(){ 
   if(!log[dateKey]) log[dateKey] = blank();
   const r = log[dateKey];
-  r.sets = r.sets || {}; r.weights = r.weights || {}; r.meals = r.meals || {}; r.diff = r.diff || {};
+  r.sets = r.sets || {}; r.weights = r.weights || {}; r.meals = r.meals || {}; r.diff = r.diff || {}; r.pick = r.pick || {};
   r.yoga = r.yoga || {part:null,done:false};
   return r;
 }
@@ -479,7 +494,7 @@ function mutate(fn){ const r = rec(); fn(r); persist(); render(); }
 /* ─────────── 렌더 ─────────── */
 
 /* ─────────── 중량 자동 산정 ─────────── */
-const BASE = { leg:25, lat:15, chest:10, curl:10 };   // 1주차 기본값
+const BASE = { leg:25, lat:15, chest:10, curl:10, ext:15 };   // 1주차 기본값
 const STEP = 5;                                        // 핀 한 칸
 const DIFFS = [["easy","쉬웠다"],["ok","딱 맞다"],["hard","힘들었다"]];
 
@@ -573,25 +588,38 @@ function renderToday(){
     box.appendChild(cta);
 
     todayEx.forEach((e,i) => {
-      const arr = setsOf(r, e.id, kind);
-      if(!r.weights[e.id]) r.weights[e.id] = String(recommend(e.id, dateKey));
+      const arr = setsOf(r, (e.alt && r.pick[e.id] === e.alt.id) ? e.alt.id : e.id, kind);
+      
       r.diff = r.diff || {};
+      const swapped = e.alt && r.pick[e.id] === e.alt.id;
+      const cur = swapped ? { ...e, id:e.alt.id, name:e.alt.name, cue:e.alt.cue } : e;
       const c = document.createElement("div"); c.className = "card"; c.style.marginTop = "12px";
       c.innerHTML = `<div class="row"><div><span style="color:var(--dawn);font-size:12px">${i+1}</span>
-        <b style="margin-left:8px">${e.name}</b></div>
-        <span class="muted" style="font-size:12px">권장 ${recommend(e.id, dateKey)}kg</span></div>
-        <div class="muted" style="font-size:12px;margin-top:2px">${e.cue}</div>`;
+        <b style="margin-left:8px">${cur.name}</b></div>
+        <span class="muted" style="font-size:12px">권장 ${recommend(cur.id, dateKey)}kg</span></div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${cur.cue}</div>`;
+      if(e.alt){
+        const sw = document.createElement("button");
+        sw.style.cssText = "margin-top:8px;height:34px;width:100%;font-size:12px;border-radius:9px;color:var(--dim)";
+        sw.textContent = swapped ? `${e.name}(으)로 바꾸기 — 기구가 비었으면` : `${e.alt.name}(으)로 바꾸기 — 기구가 차 있으면`;
+        sw.onclick = () => mutate(x => {
+          x.pick = x.pick || {};
+          x.pick[e.id] = swapped ? null : e.alt.id;
+        });
+        c.appendChild(sw);
+      }
       const row = document.createElement("div"); row.className = "setrow";
       arr.forEach((on,ix) => {
         const sb2 = document.createElement("button");
         sb2.className = "setbtn" + (on?" on":""); sb2.textContent = (ix+1)+"세트";
-        sb2.onclick = () => mutate(x => { setsOf(x, e.id, kind)[ix] = !on; });
+        sb2.onclick = () => mutate(x => { setsOf(x, cur.id, kind)[ix] = !on; });
         row.appendChild(sb2);
       });
       const kg = document.createElement("input");
       kg.className = "kg"; kg.placeholder = "kg"; kg.inputMode = "decimal";
-      kg.value = r.weights[e.id] || "";
-      kg.oninput = ev => { const r2 = rec(); r2.weights[e.id] = ev.target.value; persist(); };
+      if(!r.weights[cur.id]) r.weights[cur.id] = String(recommend(cur.id, dateKey));
+      kg.value = r.weights[cur.id] || "";
+      kg.oninput = ev => { const r2 = rec(); r2.weights[cur.id] = ev.target.value; persist(); };
       row.appendChild(kg);
       c.appendChild(row);
 
@@ -600,15 +628,15 @@ function renderToday(){
       drow.style.cssText = "display:flex;gap:6px;margin-top:8px";
       DIFFS.forEach(([val,label]) => {
         const b = document.createElement("button");
-        const on = r.diff[e.id] === val;
+        const on = r.diff[cur.id] === val;
         b.textContent = label;
         b.style.cssText = "flex:1;height:36px;font-size:12px;border-radius:9px;background:var(--panel2);border-color:transparent;color:var(--dim)";
         if(on){ b.style.background = "var(--dawn)"; b.style.color = "#fff"; }
-        b.onclick = () => mutate(x => { x.diff = x.diff||{}; x.diff[e.id] = on ? null : val; });
+        b.onclick = () => mutate(x => { x.diff = x.diff||{}; x.diff[cur.id] = on ? null : val; });
         drow.appendChild(b);
       });
       c.appendChild(drow);
-      const hint = nextHint(e.id, dateKey);
+      const hint = nextHint(cur.id, dateKey);
       if(hint){
         const hd = document.createElement("div");
         hd.className = "muted"; hd.style.cssText = "font-size:12px;margin-top:6px;color:var(--sage)";
@@ -895,8 +923,10 @@ function coachStop(){
 function coachPlan(){
   const dow = new Date().getDay();
   const k = kindOf(dow);
-  if(k === "light") return EX.map(e => ({...e, sets:2}));
-  return EX;
+  const pick = (log[keyOf(new Date())] || {}).pick || {};
+  const swap = e => (e.alt && pick[e.id] === e.alt.id) ? { ...e, id:e.alt.id, name:e.alt.name, cue:e.alt.cue } : e;
+  if(k === "light") return EX.map(swap).map(e => ({...e, sets:2}));
+  return EX.map(swap);
 }
 function coachStart(){
   CO.list = coachPlan();
