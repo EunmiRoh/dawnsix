@@ -884,7 +884,11 @@ function render(){
 
 
 /* ─────────── 코치 ─────────── */
-const PLAN = new Proxy({}, { get:(_,id) => String(recommend(id, keyOf(new Date()))) });
+const PLAN = new Proxy({}, { get:(_, id) => {
+  const today = log[keyOf(new Date())];
+  const w = parseFloat(today?.weights?.[id]);
+  return String(!isNaN(w) && w > 0 ? w : recommend(id, keyOf(new Date())));
+} });
 const CALL = { leg:"무릎 90도까지", lat:"등으로 당기세요", chest:"끝까지 펴지 마세요", curl:"허리 들리지 않게" };
 const KR = ["","하나","둘","셋","넷","다섯","여섯","일곱","여덟","아홉","열","열하나","열둘"];
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
@@ -995,7 +999,7 @@ function coachSkip(){
 }
 
 function renderCoach(){
-  if(!CO.list || !CO.list.length) CO.list = coachPlan();
+  if(CO.phase === "idle" || !CO.list || !CO.list.length) CO.list = coachPlan();
   const total = CO.list.reduce((s,e)=>s+e.sets,0);
   const done = CO.list.slice(0,CO.ex).reduce((s,e)=>s+e.sets,0) + CO.set;
   document.getElementById("coach-progress").textContent = `${done}/${total} 세트`;
