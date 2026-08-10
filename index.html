@@ -895,9 +895,65 @@ const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm
 
 function say(t){
   if(!CO.voice || !window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR"; u.rate = 1.05;
-  window.speechSynthesis.speak(u);
+  try{
+    const s = window.speechSynthesis;
+    // iOS: 오래 재생하면 paused 상태로 굳는다 — 매번 풀어준다
+    if(s.paused) s.resume();
+    // 큐가 밀리면 새 안내가 안 나오므로 비운다
+    if(s.speaking || s.pending) s.cancel();
+    const u = new SpeechSynthesisUtterance(String(t));
+    u.lang = "ko-KR"; u.rate = 1.05; u.volume = 1;
+    u.onend = () => { try{ if(s.paused) s.resume(); }catch(e){} };
+    s.speak(u);
+  }catch(e){}
 }
+// 15초마다 음성 엔진을 깨워둔다 (iOS 무음 방지)
+setInterval(() => {
+  try{
+    const s = window.speechSynthesis;
+    if(!s) return;
+    const running = (CO.phase !== "idle" && CO.phase !== "done") || (HO.phase !== "idle" && HO.phase !== "done");
+    if(running && s.paused) s.resume();
+  }catch(e){}
+}, 15000);
+
+/* ─────────── 화면 꺼짐 방지 + 신호음 ─────────── */
+let wakeLock = null;
+async function keepAwake(on){
+  try{
+    if(on){
+      if(!wakeLock && "wakeLock" in navigator){
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      }
+    } else if(wakeLock){ await wakeLock.release(); wakeLock = null; }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible"){
+    if(CO.phase !== "idle" && CO.phase !== "done") keepAwake(true);
+    if(HO.phase !== "idle" && HO.phase !== "done") keepAwake(true);
+  }
+});
+// 음성이 막혀도 들리는 신호음
+function beep(freq, dur, vol){
+  try{
+    if(!CO.ctx){ const AC = window.AudioContext||window.webkitAudioContext; CO.ctx = new AC(); }
+    if(CO.ctx.state === "suspended") CO.ctx.resume();
+    const t = CO.ctx.currentTime, g = CO.ctx.createGain(), o = CO.ctx.createOscillator();
+    g.connect(CO.ctx.destination); o.connect(g);
+    o.type = "sine"; o.frequency.setValueAtTime(freq || 880, t);
+    g.gain.setValueAtTime(vol || 0.12, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (dur || 0.18));
+    o.start(t); o.stop(t + (dur || 0.18) + 0.02);
+  }catch(e){}
+}
+// 음성 + 신호음을 함께
+function cue(text, freq){
+  say(text);
+  beep(freq || 880, 0.15, 0.1);
+}
+
 function bgmOn(){
   try{
     if(!CO.ctx){ const AC = window.AudioContext||window.webkitAudioContext; CO.ctx = new AC(); }
@@ -920,6 +976,7 @@ function bgmOn(){
 function bgmOff(){ if(CO.beat){ clearInterval(CO.beat); CO.beat = null; } }
 
 function coachStop(){
+  keepAwake(false);
   clearInterval(CO.timer); CO.timer = null; bgmOff();
   if(window.speechSynthesis) window.speechSynthesis.cancel();
   CO.phase = "idle"; renderCoach();
@@ -933,6 +990,8 @@ function coachPlan(){
   return EX.map(swap);
 }
 function coachStart(){
+  keepAwake(true);
+  try{ window.speechSynthesis.cancel(); window.speechSynthesis.resume(); }catch(e){}
   CO.list = coachPlan();
   CO.ex = 0; CO.set = 0; CO.rep = 0; CO.count = 5; CO.phase = "ready";
   if(CO.bgm) bgmOn();
@@ -962,8 +1021,8 @@ function startReps(){
       r.arrived = true; persist();
       setTimeout(() => {
         const lastSet = CO.set >= CO.list[CO.ex].sets-1, lastEx = CO.ex >= CO.list.length-1;
-        if(lastSet && lastEx){ say("전부 끝났습니다. 오늘 잘했어요."); CO.phase = "done"; bgmOff(); renderCoach(); }
-        else { say("세트 완료. 90초 휴식."); startRest(); }
+        if(lastSet && lastEx){ cue("전부 끝났습니다. 오늘 잘했어요.", 1200); CO.phase = "done"; bgmOff(); keepAwake(false); renderCoach(); }
+        else { cue("세트 완료. 90초 휴식.", 600); startRest(); }
       }, 900);
     }
   }, CO.tempo);
@@ -974,13 +1033,14 @@ function startRest(){
   CO.timer = setInterval(() => {
     CO.count--;
     if(CO.count<=0){
-      if(CO.set >= CO.list[CO.ex].sets-1){ CO.ex++; CO.set = 0; say(`${CO.list[CO.ex].name}. 핀은 ${PLAN[CO.list[CO.ex].id]}킬로.`); }
-      else { CO.set++; say(`${CO.set+1}세트 시작.`); }
+      if(CO.set >= CO.list[CO.ex].sets-1){ CO.ex++; CO.set = 0; cue(`${CO.list[CO.ex].name}. 핀은 ${PLAN[CO.list[CO.ex].id]}킬로.`, 1000); }
+      else { CO.set++; cue(`${CO.set+1}세트 시작.`, 1000); }
       startReps();
     } else {
-      if(CO.count===30) say("30초 남았습니다."); 
-      if(CO.count===10) say("10초.");
-      if(CO.count<=3) say(String(CO.count));
+      if(CO.count===60) cue("60초 남았습니다.", 700);
+      if(CO.count===30) cue("30초 남았습니다.", 700);
+      if(CO.count===10) cue("10초.", 800);
+      if(CO.count<=3 && CO.count>0) cue(String(CO.count), 900);
       renderCoach();
     }
   }, 1000);
@@ -990,7 +1050,7 @@ function coachSkip(){
   if(window.speechSynthesis) window.speechSynthesis.cancel();
   if(CO.ex >= CO.list.length-1){ CO.phase = "done"; bgmOff(); renderCoach(); return; }
   CO.ex++; CO.set = 0; CO.count = 5; CO.phase = "ready";
-  say(`${CO.list[CO.ex].name}. 핀은 ${PLAN[CO.list[CO.ex].id]}킬로.`);
+  cue(`${CO.list[CO.ex].name}. 핀은 ${PLAN[CO.list[CO.ex].id]}킬로.`, 1000);
   CO.timer = setInterval(() => {
     CO.count--;
     if(CO.count<=0) startReps(); else renderCoach();
@@ -1029,11 +1089,16 @@ function renderCoach(){
       <div style="color:var(--dawn);font-size:14px;margin-top:18px">${ex.cue}</div>`;
   }
   if(CO.phase==="rest"){
-    const nextTxt = CO.set >= ex.sets-1 ? `다음: ${CO.list[Math.min(CO.ex+1,CO.list.length-1)].name}` : `${CO.set+2}세트 준비`;
+    const isLastSet = CO.set >= ex.sets-1;
+    const nx = isLastSet ? CO.list[Math.min(CO.ex+1, CO.list.length-1)] : ex;
+    const nextTxt = isLastSet ? `다음 종목 · ${nx.name}` : `${ex.name} ${CO.set+2}세트`;
     body.innerHTML = `<div style="color:var(--sage);font-size:14px">휴식</div>
       <div style="font-size:78px;font-weight:800;color:var(--sage);line-height:1.1">${CO.count}</div>
-      <div class="muted" style="font-size:13px">${nextTxt}</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">물 한 모금 마시세요</div>`;
+      <div style="font-size:17px;font-weight:700;margin-top:4px">${nextTxt}</div>
+      <div style="display:inline-block;margin-top:10px;padding:8px 18px;border-radius:10px;background:var(--tint);color:var(--dawn);font-size:20px;font-weight:800">
+        핀 ${PLAN[nx.id]}kg
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:10px">${isLastSet ? "기구를 옮기고 핀을 맞춰두세요" : "물 한 모금 마시세요"}</div>`;
   }
   if(CO.phase==="done"){
     body.innerHTML = `<div style="font-size:26px;font-weight:800;color:var(--sage)">끝났습니다</div>
@@ -1056,7 +1121,12 @@ function renderCoach(){
   document.getElementById("c-bgm").textContent = "BGM " + (CO.bgm ? "켜짐" : "꺼짐");
   document.getElementById("c-tempo").textContent = CO.tempo===3000 ? "보통 속도" : "느린 속도";
 }
-document.getElementById("c-voice").onclick = () => { CO.voice = !CO.voice; if(window.speechSynthesis) window.speechSynthesis.cancel(); renderCoach(); };
+document.getElementById("c-voice").onclick = () => {
+  CO.voice = !CO.voice;
+  try{ window.speechSynthesis.cancel(); window.speechSynthesis.resume(); }catch(e){}
+  if(CO.voice) say("음성 켜짐");
+  renderCoach();
+};
 document.getElementById("c-bgm").onclick = () => { CO.bgm = !CO.bgm; CO.bgm && CO.phase!=="idle" ? bgmOn() : bgmOff(); renderCoach(); };
 document.getElementById("c-tempo").onclick = () => {
   CO.tempo = CO.tempo===3000 ? 4000 : 3000;
@@ -1075,11 +1145,14 @@ function homeMinutes(list){
 }
 
 function homeStop(){
+  keepAwake(false);
   clearInterval(HO.timer); HO.timer = null; bgmOff();
   if(window.speechSynthesis) window.speechSynthesis.cancel();
   HO.phase = "idle"; renderHome();
 }
 function homeStart(){
+  keepAwake(true);
+  try{ window.speechSynthesis.cancel(); window.speechSynthesis.resume(); }catch(e){}
   HO.list = homeList();
   HO.ex = 0; HO.set = 0; HO.rep = 0; HO.count = 5; HO.phase = "ready";
   if(CO.bgm) bgmOn();
@@ -1130,10 +1203,10 @@ function finishSet(){
   // 기록: 집 운동을 완료하면 대체 운동으로 체크
   if(last && lastEx){
     const r = rec(); r.backup = true; persist();
-    setTimeout(() => { say("전부 끝났습니다. 오늘도 성공입니다."); HO.phase = "done"; bgmOff(); renderHome(); }, 700);
+    setTimeout(() => { cue("전부 끝났습니다. 오늘도 성공입니다.", 1200); keepAwake(false); HO.phase = "done"; bgmOff(); renderHome(); }, 700);
     return;
   }
-  setTimeout(() => { say(`세트 완료. ${HOME_REST}초 휴식.`); homeRest(); }, 700);
+  setTimeout(() => { cue(`세트 완료. ${HOME_REST}초 휴식.`, 600); homeRest(); }, 700);
 }
 function homeRest(){
   clearInterval(HO.timer);
@@ -1146,8 +1219,8 @@ function homeRest(){
       else { HO.set++; say(`${HO.set+1}세트 시작.`); }
       homeReps();
     } else {
-      if(HO.count===15) say("15초.");
-      if(HO.count<=3) say(String(HO.count));
+      if(HO.count===15) cue("15초.", 800);
+      if(HO.count<=3 && HO.count>0) cue(String(HO.count), 900);
       renderHome();
     }
   }, 1000);
@@ -1206,10 +1279,13 @@ function renderHome(){
       <div class="muted" style="font-size:13px">${unit}</div>
       <div style="color:var(--dawn);font-size:14px;margin-top:16px">${e.cue}</div></div>`;
   } else if(HO.phase==="rest"){
+    const hLast = HO.set >= e.sets-1;
+    const hNext = hLast ? HO.list[Math.min(HO.ex+1, HO.list.length-1)] : e;
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div style="color:var(--sage);font-size:14px">휴식</div>
       <div style="font-size:72px;font-weight:800;color:var(--sage);line-height:1.1">${HO.count}</div>
-      <div class="muted" style="font-size:13px">${HO.set >= e.sets-1 ? `다음: ${HO.list[Math.min(HO.ex+1,HO.list.length-1)].name}` : `${HO.set+2}세트 준비`}</div></div>`;
+      <div style="font-size:17px;font-weight:700;margin-top:4px">${hLast ? `다음 · ${hNext.name}` : `${e.name} ${HO.set+2}세트`}</div>
+      <div class="muted" style="font-size:13px;margin-top:4px">${hNext.hold ? hNext.dur+"초" : hNext.reps+"회"}</div></div>`;
   } else {
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div style="font-size:24px;font-weight:800;color:var(--sage)">끝났습니다</div>
