@@ -236,6 +236,8 @@
     <div class="card" id="wchart"></div>
     <h2>일별 단백질 (g)</h2>
     <div class="card" id="pchart"></div>
+    <h2>배변</h2>
+    <div class="card" id="schart"></div>
     <h2>기록</h2>
     <div id="history"></div>
   </section>
@@ -429,7 +431,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null} });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -438,6 +440,24 @@ const ratioOf = (r,kind) => {
   return 0;
 };
 const gymOK = r => !!(r && (r.arrived || r.backup || ratioOf(r,"gym") >= .5));
+
+/* ─────────── 배변 ─────────── */
+const STOOL = [["none","없음","var(--dim)"],["hard","딱딱","var(--rose)"],["normal","정상","var(--dawn)"],["loose","무름","var(--rose)"]];
+const STOOL_LABEL = Object.fromEntries(STOOL.map(([id,l])=>[id,l]));
+// 정상 또는 무름이면서 양이 적지 않을 때만 "제대로 본 날"로 인정 — 딱딱·찔끔은 카운터를 끊지 않는다
+const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="normal"||st.type==="loose") && st.amount!=="small"); };
+function daysSinceStool(key){
+  const d = parseKey(key);
+  let bad = 0;
+  for(let i=0;i<=14;i++){
+    const dd = new Date(d); dd.setDate(d.getDate()-i);
+    const r = log[keyOf(dd)];
+    if(isGoodStool(r)) return i;
+    if(r && r.stool && r.stool.type) bad = i + 1;   // 기록은 있는데 제대로 못 본 날
+    else if(i > 0 && bad === 0) break;              // 기록 자체가 없으면 판단 보류
+  }
+  return bad > 0 ? bad : null;
+}
 const isGymDay = dow => ["gym","light"].includes(kindOf(dow));
 
 /* ─────────── 상태 ─────────── */
@@ -501,6 +521,7 @@ function rec(){
   const r = log[dateKey];
   r.sets = r.sets || {}; r.weights = r.weights || {}; r.meals = r.meals || {}; r.diff = r.diff || {}; r.pick = r.pick || {};
   r.yoga = r.yoga || {part:null,done:false};
+  r.stool = r.stool || {type:null,amount:null};
   return r;
 }
 function setsOf(r, id, kind){
@@ -753,6 +774,50 @@ function renderToday(){
   w.appendChild(wi);
   box.appendChild(w);
 
+  // 배변
+  const st = document.createElement("div"); st.className = "card"; st.style.marginTop = "12px";
+  st.innerHTML = `<div class="row"><div><b style="font-size:14px">배변</b>
+    <div class="muted" style="font-size:12px">체중이 튀는 날의 원인 판별용. 하루 한 번만 기록</div></div></div>`;
+  const srow = document.createElement("div"); srow.className = "setrow"; srow.style.marginTop = "10px";
+  STOOL.forEach(([id,label,col]) => {
+    const b = document.createElement("button");
+    b.className = "setbtn" + (r.stool.type===id ? " on" : "");
+    b.textContent = label;
+    if(r.stool.type===id){ b.style.background=col; b.style.borderColor=col; b.style.color="#fff"; b.style.boxShadow="none"; }
+    b.onclick = () => mutate(x => {
+      x.stool.type = (x.stool.type===id) ? null : id;
+      if(x.stool.type===null || x.stool.type==="none") x.stool.amount = null;
+    });
+    srow.appendChild(b);
+  });
+  st.appendChild(srow);
+  if(r.stool.type && r.stool.type!=="none"){
+    const arow = document.createElement("div"); arow.className = "setrow";
+    [["small","적음"],["normal","보통"]].forEach(([id,label]) => {
+      const b = document.createElement("button");
+      b.className = "setbtn" + (r.stool.amount===id ? " on" : "");
+      b.textContent = "양 " + label;
+      b.onclick = () => mutate(x => { x.stool.amount = (x.stool.amount===id) ? null : id; });
+      arow.appendChild(b);
+    });
+    st.appendChild(arow);
+  }
+  const gap = daysSinceStool(dateKey);
+  const gapEl = document.createElement("div");
+  gapEl.className = "muted"; gapEl.style.cssText = "font-size:12px;margin-top:10px";
+  gapEl.textContent = gap===null ? "제대로 본 날 기록이 아직 없습니다."
+    : gap===0 ? "오늘 정상. 카운터 초기화됐습니다."
+    : `마지막 정상 배변 후 ${gap}일`;
+  st.appendChild(gapEl);
+  if(gap!==null && gap>=2){
+    const wn = document.createElement("div"); wn.className = "warn";
+    wn.innerHTML = gap>=3
+      ? `<b>${gap}일째입니다.</b> 처방 받는 병원에 알리세요. 배가 아프거나 빵빵하게 부풀면 더 기다리지 마시고요.`
+      : `이틀째입니다. 물 1.5~2L, 차전자피 한 스푼(물 많이 같이). 아침 헬스도 장 운동에 도움 됩니다.`;
+    st.appendChild(wn);
+  }
+  box.appendChild(st);
+
   // 단백질
   const total = proteinOf(r), left = Math.max(GOAL-total,0);
   const pw = document.createElement("div"); pw.style.marginTop = "22px";
@@ -884,6 +949,27 @@ function renderTrend(){
   document.getElementById("pchart").innerHTML =
     barChart(days.slice(-14).map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})));
 
+  const sdays = days.slice(-14);
+  const SCOL = { none:"var(--panel2)", hard:"var(--rose)", normal:"var(--dawn)", loose:"var(--rosetint)" };
+  const sgap = daysSinceStool(keyOf(new Date()));
+  document.getElementById("schart").innerHTML = sdays.length
+    ? `<div style="display:flex;gap:4px;align-items:flex-end">` + sdays.map(k=>{
+        const t = log[k]?.stool?.type, sm = log[k]?.stool?.amount==="small";
+        const bg = t ? SCOL[t] : "transparent";
+        const bd = t==="loose" ? "var(--rose)" : (t ? bg : "var(--line)");
+        return `<div style="flex:1;text-align:center">
+          <div style="height:26px;border-radius:7px;background:${bg};border:1.5px solid ${bd}"></div>
+          <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
+          <div class="muted" style="font-size:9px;color:${sm?"var(--rose)":"transparent"}">적음</div></div>`;
+      }).join("") + `</div>
+      <div class="muted" style="font-size:11px;margin-top:10px">
+        <span style="color:var(--dawn)">■</span> 정상 &nbsp;
+        <span style="color:var(--rose)">■</span> 딱딱 &nbsp;
+        <span style="color:var(--rose)">□</span> 무름 &nbsp;
+        <span style="color:var(--dim)">■</span> 없음</div>
+      <div class="muted" style="font-size:12px;margin-top:8px">${sgap===null?"제대로 본 날 기록 없음":sgap===0?"오늘 정상":`마지막 정상 배변 후 ${sgap}일`}</div>`
+    : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
+
   document.getElementById("history").innerHTML = days.slice().reverse().slice(0,30).map(k=>{
     const r = log[k], kind = kindOf(parseKey(k).getDay());
     const bits = [];
@@ -892,6 +978,7 @@ function renderTrend(){
     if(r.yoga?.done) bits.push("요가 O");
     if(r.backup) bits.push(isGymDay(parseKey(k).getDay()) ? "대체" : "집운동");
     bits.push(`단백질 ${proteinOf(r)}g`);
+    if(r.stool?.type) bits.push("배변 " + STOOL_LABEL[r.stool.type] + (r.stool.amount==="small" ? "·적음" : ""));
     return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
       <div class="row"><b style="font-size:14px">${lab(k)} (${DAY[parseKey(k).getDay()]})</b>
       <span class="muted" style="font-size:12px">${bits.join(" · ")}</span></div></div>`;
