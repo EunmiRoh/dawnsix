@@ -238,6 +238,8 @@
     <div class="card" id="pchart"></div>
     <h2>배변</h2>
     <div class="card" id="schart"></div>
+    <h2>생리 주기</h2>
+    <div class="card" id="cchart"></div>
     <h2>기록</h2>
     <div id="history"></div>
   </section>
@@ -431,7 +433,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null} });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false} });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -446,6 +448,75 @@ const STOOL = [["none","없음","var(--dim)"],["hard","딱딱","var(--rose)"],["
 const STOOL_LABEL = Object.fromEntries(STOOL.map(([id,l])=>[id,l]));
 // 정상 또는 무름이면서 양이 적지 않을 때만 "제대로 본 날"로 인정 — 딱딱·찔끔은 카운터를 끊지 않는다
 const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="normal"||st.type==="loose") && st.amount!=="small"); };
+/* ─────────── 생리 주기 ─────────── */
+const DEFAULT_CYCLE = 28, DEFAULT_PERIOD = 5;
+const dayDiff = (a,b) => Math.round((parseKey(a)-parseKey(b))/86400000);
+const addDays = (key,n) => { const d=parseKey(key); d.setDate(d.getDate()+n); return keyOf(d); };
+const fmtKey = k => `${parseKey(k).getMonth()+1}/${parseKey(k).getDate()}`;
+const cycleStarts = () => Object.keys(log).filter(k=>log[k]?.cycle?.start).sort();
+const cycleEnds   = () => Object.keys(log).filter(k=>log[k]?.cycle?.end).sort();
+
+function cycleInfo(key){
+  const starts = cycleStarts();
+  if(!starts.length) return null;
+  const past = starts.filter(k => k <= key);
+  if(!past.length) return null;
+  const last = past[past.length-1];
+
+  // 평균 주기 — 시작일이 2개 이상일 때만
+  let avg = DEFAULT_CYCLE, avgKnown = false;
+  if(starts.length >= 2){
+    const gaps = [];
+    for(let i=1;i<starts.length;i++){
+      const g = dayDiff(starts[i], starts[i-1]);
+      if(g >= 15 && g <= 60) gaps.push(g);
+    }
+    if(gaps.length){ avg = Math.round(gaps.reduce((a,b)=>a+b,0)/gaps.length); avgKnown = true; }
+  }
+  // 이번 주기의 종료일
+  const nextStart = starts.find(k => k > last);
+  const end = cycleEnds().find(k => k >= last && (!nextStart || k < nextStart)) || null;
+  // 평균 생리 기간
+  let plen = DEFAULT_PERIOD, plenKnown = false;
+  const lens = [];
+  starts.forEach(st => {
+    const ns = starts.find(k=>k>st);
+    const e = cycleEnds().find(k => k >= st && (!ns || k < ns));
+    if(e){ const L = dayDiff(e,st)+1; if(L>=2 && L<=12) lens.push(L); }
+  });
+  if(lens.length){ plen = Math.round(lens.reduce((a,b)=>a+b,0)/lens.length); plenKnown = true; }
+
+  const dayN = dayDiff(key, last) + 1;
+  const predicted = addDays(last, avg);
+  const untilNext = dayDiff(predicted, key);
+  const onPeriod = end ? (key >= last && key <= end) : (dayN <= plen);
+
+  let phase, note;
+  if(onPeriod){ phase="period"; note=`생리 ${dayN}일차`; }
+  else if(untilNext <= 7 && untilNext >= 0){ phase="pre"; note=`생리 예정 D-${untilNext}`; }
+  else if(untilNext < 0){ phase="late"; note=`예정일 ${-untilNext}일 지남`; }
+  else { phase="mid"; note=`주기 ${dayN}일차`; }
+
+  // 인바디 권장 — 생리 종료 2일 뒤 ~ 다음 생리 7일 전. 이미 지난 창이면 다음 주기로 넘긴다
+  let win = null;
+  for(let c=0; c<3; c++){
+    const st = addDays(last, avg*c);
+    const en = (c===0 && end) ? end : addDays(st, plen-1);
+    const cand = { from: addDays(en,2), to: addDays(addDays(st,avg),-7) };
+    if(dayDiff(cand.to, cand.from) >= 0 && cand.to >= key){ win = cand; break; }
+  }
+  const winOK = !!win;
+  if(!win) win = { from:null, to:null };
+
+  return { last, end, dayN, avg, avgKnown, plen, plenKnown, predicted, untilNext, phase, note, win, winOK, count:starts.length };
+}
+const CYCLE_HINT = {
+  period:"생리 중에는 체중이 붓기로 올라가 있을 수 있습니다.",
+  pre:"생리 전 구간입니다. 붓기로 1~2kg까지 올라갈 수 있어요.",
+  late:"예정일이 지났습니다. 체중이 평소보다 높게 나올 수 있어요.",
+  mid:""
+};
+
 function daysSinceStool(key){
   const d = parseKey(key);
   let bad = 0;
@@ -522,6 +593,7 @@ function rec(){
   r.sets = r.sets || {}; r.weights = r.weights || {}; r.meals = r.meals || {}; r.diff = r.diff || {}; r.pick = r.pick || {};
   r.yoga = r.yoga || {part:null,done:false};
   r.stool = r.stool || {type:null,amount:null};
+  r.cycle = r.cycle || {start:false,end:false};
   return r;
 }
 function setsOf(r, id, kind){
@@ -772,6 +844,13 @@ function renderToday(){
   wi.placeholder="kg"; wi.inputMode="decimal"; wi.value = r.bodyWeight || "";
   wi.oninput = ev => { const r2 = rec(); r2.bodyWeight = ev.target.value; persist(); };
   w.appendChild(wi);
+  const ci0 = cycleInfo(dateKey);
+  if(ci0 && CYCLE_HINT[ci0.phase]){
+    const hint = document.createElement("div");
+    hint.className = "muted"; hint.style.cssText = "font-size:12px;margin-top:10px;color:var(--rose)";
+    hint.textContent = CYCLE_HINT[ci0.phase];
+    w.appendChild(hint);
+  }
   box.appendChild(w);
 
   // 배변
@@ -817,6 +896,36 @@ function renderToday(){
     st.appendChild(wn);
   }
   box.appendChild(st);
+
+  // 생리
+  const cy = document.createElement("div"); cy.className = "card"; cy.style.marginTop = "12px";
+  cy.innerHTML = `<div class="row"><div><b style="font-size:14px">생리</b>
+    <div class="muted" style="font-size:12px">시작일·종료일만 누르면 나머지는 계산됩니다</div></div></div>`;
+  const crow = document.createElement("div"); crow.className = "setrow"; crow.style.marginTop = "10px";
+  [["start","생리 시작"],["end","생리 종료"]].forEach(([f,label]) => {
+    const b = document.createElement("button");
+    b.className = "setbtn" + (r.cycle[f] ? " on" : "");
+    b.textContent = label;
+    if(r.cycle[f]){ b.style.background="var(--rose)"; b.style.borderColor="var(--rose)"; b.style.color="#fff"; b.style.boxShadow="none"; }
+    b.onclick = () => mutate(x => { x.cycle[f] = !x.cycle[f]; });
+    crow.appendChild(b);
+  });
+  cy.appendChild(crow);
+  const ci = cycleInfo(dateKey);
+  const cinfo = document.createElement("div");
+  cinfo.className = "muted"; cinfo.style.cssText = "font-size:12px;margin-top:10px;line-height:1.7";
+  if(!ci){
+    cinfo.textContent = "생리 시작일을 한 번 누르면 주기 계산이 시작됩니다.";
+  } else {
+    const bits = [`<b style="color:var(--mist)">${ci.note}</b>`];
+    bits.push(`직전 시작 ${fmtKey(ci.last)}${ci.end ? ` · 종료 ${fmtKey(ci.end)}` : ""}`);
+    bits.push(`평균 주기 ${ci.avg}일${ci.avgKnown ? "" : " (기본값 — 시작일 2회 이상 쌓이면 실제값)"}`);
+    bits.push(`다음 예정 ${fmtKey(ci.predicted)}`);
+    if(ci.winOK) bits.push(`<b style="color:var(--dawn)">인바디 권장 ${fmtKey(ci.win.from)} ~ ${fmtKey(ci.win.to)}</b>`);
+    cinfo.innerHTML = bits.join("<br>");
+  }
+  cy.appendChild(cinfo);
+  box.appendChild(cy);
 
   // 단백질
   const total = proteinOf(r), left = Math.max(GOAL-total,0);
@@ -886,7 +995,7 @@ function renderToday(){
   }
 }
 
-function lineChart(points, unit){
+function lineChart(points, unit, marks){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
   const W=320,H=150,P=30;
   const vals = points.map(p=>p.v), mn = Math.min(...vals)-.6, mx = Math.max(...vals)+.6, span = (mx-mn)||1;
@@ -898,6 +1007,11 @@ function lineChart(points, unit){
     <line x1="${P}" y1="${H-26}" x2="${W-8}" y2="${H-26}" stroke="var(--line)"/>
     <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
     <text x="2" y="${H-28}" font-size="9" fill="var(--dim)">${mn.toFixed(1)}</text>
+    ${(marks||[]).filter(m=>pts.some(p=>p.k===m)).map(m=>{
+      const p = pts.find(x=>x.k===m);
+      return `<line x1="${p.x}" y1="18" x2="${p.x}" y2="${H-26}" stroke="var(--rose)" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <text x="${p.x}" y="14" font-size="8" fill="var(--rose)" text-anchor="middle">생리</text>`;
+    }).join("")}
     <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2"/>
     ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--dawn)"/>
       <text x="${p.x}" y="${p.y-8}" font-size="9" fill="var(--mist)" text-anchor="middle">${p.v.toFixed(1)}</text>
@@ -945,7 +1059,7 @@ function renderTrend(){
     <div class="muted" style="font-size:12px;margin-top:10px">골격근량 22.6kg 유지가 진짜 목표입니다. 체중이 그대로여도 근육이 남으면 성공.</div>`;
   } else cmp.innerHTML = `<div class="muted" style="font-size:13px">체중을 입력하면 전후 비교가 나옵니다.</div>`;
 
-  document.getElementById("wchart").innerHTML = lineChart(weights.slice(-14));
+  document.getElementById("wchart").innerHTML = lineChart(weights.slice(-14), null, cycleStarts());
   document.getElementById("pchart").innerHTML =
     barChart(days.slice(-14).map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})));
 
@@ -970,6 +1084,25 @@ function renderTrend(){
       <div class="muted" style="font-size:12px;margin-top:8px">${sgap===null?"제대로 본 날 기록 없음":sgap===0?"오늘 정상":`마지막 정상 배변 후 ${sgap}일`}</div>`
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
 
+  const ci2 = cycleInfo(keyOf(new Date()));
+  const cc = document.getElementById("cchart");
+  if(!ci2){
+    cc.innerHTML = `<div class="muted" style="font-size:13px">생리 시작일을 누르면 주기와 인바디 권장 시기가 계산됩니다.</div>`;
+  } else {
+    const rows = [
+      ["현재", ci2.note],
+      ["직전 생리", fmtKey(ci2.last) + (ci2.end ? ` ~ ${fmtKey(ci2.end)} (${dayDiff(ci2.end,ci2.last)+1}일)` : " ~ 진행 중")],
+      ["평균 주기", `${ci2.avg}일` + (ci2.avgKnown ? ` (기록 ${ci2.count}회)` : " — 기본값")],
+      ["평균 기간", `${ci2.plen}일` + (ci2.plenKnown ? "" : " — 기본값")],
+      ["다음 예정", fmtKey(ci2.predicted)]
+    ];
+    cc.innerHTML = rows.map(([a,b])=>`<div class="row" style="padding:5px 0">
+      <span class="muted" style="font-size:12px">${a}</span><b style="font-size:13px">${b}</b></div>`).join("")
+      + (ci2.winOK ? `<div class="warn" style="border-color:var(--dawn);background:var(--tint);color:var(--sage)">
+          <b>인바디 권장 ${fmtKey(ci2.win.from)} ~ ${fmtKey(ci2.win.to)}</b><br>
+          생리 직전·직후엔 체수분이 달라져 골격근량이 실제와 다르게 나옵니다. 7/30 측정과 조건을 맞추려면 이 구간이 낫습니다.</div>` : "");
+  }
+
   document.getElementById("history").innerHTML = days.slice().reverse().slice(0,30).map(k=>{
     const r = log[k], kind = kindOf(parseKey(k).getDay());
     const bits = [];
@@ -979,6 +1112,8 @@ function renderTrend(){
     if(r.backup) bits.push(isGymDay(parseKey(k).getDay()) ? "대체" : "집운동");
     bits.push(`단백질 ${proteinOf(r)}g`);
     if(r.stool?.type) bits.push("배변 " + STOOL_LABEL[r.stool.type] + (r.stool.amount==="small" ? "·적음" : ""));
+    if(r.cycle?.start) bits.push("생리 시작");
+    if(r.cycle?.end) bits.push("생리 종료");
     return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
       <div class="row"><b style="font-size:14px">${lab(k)} (${DAY[parseKey(k).getDay()]})</b>
       <span class="muted" style="font-size:12px">${bits.join(" · ")}</span></div></div>`;
