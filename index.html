@@ -433,7 +433,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false} });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false} });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -442,6 +442,14 @@ const ratioOf = (r,kind) => {
   return 0;
 };
 const gymOK = r => !!(r && (r.arrived || r.backup || ratioOf(r,"gym") >= .5));
+const sessionLabel = r => {
+  const sn = r && r.session; if(!sn) return "";
+  if(sn.am && sn.pm) return "아침·저녁";
+  if(sn.am) return "아침";
+  if(sn.pm) return "저녁";
+  return "";
+};
+const sessionCount = r => (r && r.session) ? ((r.session.am?1:0) + (r.session.pm?1:0)) : 0;
 
 /* ─────────── 배변 ─────────── */
 const STOOL = [["none","없음","var(--dim)"],["hard","딱딱","var(--rose)"],["normal","정상","var(--dawn)"],["loose","무름","var(--rose)"]];
@@ -594,6 +602,7 @@ function rec(){
   r.yoga = r.yoga || {part:null,done:false};
   r.stool = r.stool || {type:null,amount:null};
   r.cycle = r.cycle || {start:false,end:false};
+  r.session = r.session || {am:false,pm:false};
   return r;
 }
 function setsOf(r, id, kind){
@@ -693,8 +702,35 @@ function renderToday(){
     b.className = "big" + (r.arrived ? " on" : "");
     b.innerHTML = `<div style="font-size:16px;font-weight:700">${r.arrived?"들어왔다 · 오늘은 성공":"체력단련실 문 열고 들어왔다"}</div>
       <div style="font-size:12px;opacity:.8;margin-top:2px">${r.arrived?"10분만 하고 나와도 됩니다":"여기까지가 오늘의 목표. 아래는 보너스"}</div>`;
-    b.onclick = () => mutate(x => { x.arrived = !x.arrived; });
+    b.onclick = () => mutate(x => {
+      x.arrived = !x.arrived;
+      if(!x.arrived){ x.session.am = false; x.session.pm = false; }
+    });
     box.appendChild(b);
+
+    // 언제 다녀왔는지 — 아침·저녁 둘 다 가능
+    const sess = document.createElement("div"); sess.className = "card"; sess.style.marginTop = "12px";
+    sess.innerHTML = `<div class="muted" style="font-size:12px">언제 다녀왔나요 — 둘 다 다녀오셨으면 둘 다 누르세요</div>`;
+    const sesrow = document.createElement("div"); sesrow.className = "setrow"; sesrow.style.marginTop = "8px";
+    [["am","아침 (출근 전)"],["pm","저녁 (퇴근 후)"]].forEach(([f,label]) => {
+      const sb = document.createElement("button");
+      sb.className = "setbtn" + (r.session[f] ? " on" : "");
+      sb.textContent = label;
+      if(r.session[f]){ sb.style.background="var(--dawn)"; sb.style.borderColor="var(--dawn)"; sb.style.color="#fff"; sb.style.boxShadow="none"; }
+      sb.onclick = () => mutate(x => {
+        x.session[f] = !x.session[f];
+        if(x.session[f]) x.arrived = true;
+      });
+      sesrow.appendChild(sb);
+    });
+    sess.appendChild(sesrow);
+    if(sessionCount(r) === 2){
+      const two = document.createElement("div");
+      two.className = "muted"; two.style.cssText = "font-size:12px;margin-top:9px;color:var(--dawn)";
+      two.textContent = "하루 두 번. 다음 날 근육이 뻐근하면 무게 올리지 마시고 그대로 가세요.";
+      sess.appendChild(two);
+    }
+    box.appendChild(sess);
 
     // 음성 코치로 바로 가기
     const cta = document.createElement("button");
@@ -1107,7 +1143,9 @@ function renderTrend(){
     const r = log[k], kind = kindOf(parseKey(k).getDay());
     const bits = [];
     if(r.bodyWeight) bits.push(`체중 ${r.bodyWeight}`);
-    if(isGymDay(parseKey(k).getDay())) bits.push(gymOK(r) ? (kind==="light"?"가볍게 O":"헬스 O") : "헬스 —");
+    const sl = sessionLabel(r);
+    if(isGymDay(parseKey(k).getDay())) bits.push(gymOK(r) ? ((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : " O")) : "헬스 —");
+    else if(sl) bits.push("헬스 " + sl);
     if(r.yoga?.done) bits.push("요가 O");
     if(r.backup) bits.push(isGymDay(parseKey(k).getDay()) ? "대체" : "집운동");
     bits.push(`단백질 ${proteinOf(r)}g`);
