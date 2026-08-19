@@ -495,6 +495,26 @@ function shotInfo(key){
   return { last, dose, since, next, until, nth: n, total: past.length, hist };
 }
 
+// 현재 용량 구간의 요약 — 증량 상담 근거
+function doseBlockStats(key){
+  const si = shotInfo(key);
+  if(!si) return null;
+  const all = shotDays().filter(k => k <= key);
+  // 현재 용량이 시작된 날
+  let from = si.last;
+  for(let i = all.length-1; i >= 0; i--){
+    if(log[all[i]]?.shot?.dose === si.dose) from = all[i]; else break;
+  }
+  const days = Object.keys(log).filter(k => k >= from && k <= key).sort();
+  const prot = days.map(k => proteinOf(log[k])).filter(g => g > 0);
+  const avg = prot.length ? Math.round(prot.reduce((a,b)=>a+b,0)/prot.length) : null;
+  const low = prot.filter(g => g < 60).length;
+  const noStool = days.filter(k => log[k]?.stool?.type === "none").length;
+  const ws = days.map(k => parseFloat(log[k]?.bodyWeight)).filter(v => !isNaN(v));
+  const drop = ws.length >= 2 ? (ws[0] - ws[ws.length-1]).toFixed(1) : null;
+  return { dose: si.dose, from, nth: si.nth, avg, low, noStool, drop, days: days.length };
+}
+
 // 주사 후 며칠차별 평균 단백질
 function proteinByShotDay(){
   const all = shotDays();
@@ -1067,40 +1087,110 @@ function renderToday(){
     sinfo.textContent = "주사 맞은 날 눌러두면 며칠차 계산이 시작됩니다.";
   } else {
     const b2 = [`<b style="color:var(--mist)">주사 ${si.since}일차 · ${si.dose}mg</b>`];
-    b2.push(`직전 주사 ${fmtKey(si.last)} (${si.dose}mg ${si.nth}차)`);
+    b2.push(`직전 주사 ${fmtKey(si.last)} (${si.dose}mg ${si.nth}/4차)`);
     b2.push(si.until > 0 ? `다음 주사 ${fmtKey(si.next)} · D-${si.until}` : si.until === 0 ? `<b style="color:var(--rose)">오늘이 주사일입니다</b>` : `<b style="color:var(--rose)">예정일 ${-si.until}일 지남</b>`);
     if(si.since <= 1) b2.push(`식욕 저하가 제일 심한 구간입니다. 60g 하한만 지키세요.`);
     sinfo.innerHTML = b2.join("<br>");
+    if(si.nth >= 4){
+      const dbs = doseBlockStats(dateKey);
+      const cons = document.createElement("div"); cons.className = "warn";
+      cons.style.cssText = "border-color:var(--sage);background:var(--tint);color:var(--sage)";
+      let t = `<b>${si.dose}mg ${si.nth}회 채웠습니다 — 증량 상담 시점입니다.</b>`;
+      if(dbs){
+        const bits = [];
+        if(dbs.avg !== null) bits.push(`평균 단백질 ${dbs.avg}g`);
+        if(dbs.low) bits.push(`60g 미만 ${dbs.low}일`);
+        if(dbs.noStool) bits.push(`배변 없음 ${dbs.noStool}일`);
+        if(dbs.drop !== null) bits.push(`체중 ${dbs.drop}kg`);
+        if(bits.length) t += `<br>이 구간 기록 — ${bits.join(" · ")}`;
+      }
+      t += `<br>증량 여부는 병원 판단입니다. 이 숫자를 그대로 말씀하시면 됩니다.`;
+      cons.innerHTML = t;
+      sh.appendChild(cons);
+    }
   }
   sh.appendChild(sinfo);
 
-  // 지난 주사 소급 입력
+  // 주사 기록 수정 — 목록에서 직접 고친다
   const det = document.createElement("details"); det.style.marginTop = "10px";
-  det.innerHTML = `<summary class="muted" style="font-size:12px;cursor:pointer">지난 주사 한 번에 채우기</summary>`;
-  const fwrap = document.createElement("div"); fwrap.style.cssText = "margin-top:9px;display:flex;flex-direction:column;gap:7px";
-  const di = document.createElement("input"); di.type = "date"; di.className = "inp"; di.style.width = "100%";
-  // 기본값: 가장 최근에 지난 주사 요일
-  (() => { const t = parseKey(dateKey); const back = (t.getDay() - shotDow() + 7) % 7; t.setDate(t.getDate() - back); di.value = keyOf(t); })();
-  const ds = document.createElement("select"); ds.className = "inp"; ds.style.width = "100%";
-  DOSES.forEach(dv => { const o = document.createElement("option"); o.value = dv; o.textContent = dv + "mg"; ds.appendChild(o); });
-  ds.value = "5";
-  const ni = document.createElement("input"); ni.type = "number"; ni.className = "inp"; ni.style.width = "100%";
-  ni.min = "1"; ni.max = "20"; ni.value = "4"; ni.placeholder = "회차 수";
-  const hintEl = document.createElement("div"); hintEl.className = "muted"; hintEl.style.fontSize = "11px";
-  hintEl.textContent = `시작일부터 매주 같은 요일(${DAY[shotDow()]}요일)로 채웁니다. 이미 기록된 날은 덮어씁니다.`;
-  const ab = document.createElement("button"); ab.className = "setbtn"; ab.textContent = "채우기";
-  ab.onclick = () => {
-    if(!di.value) return;
-    const dose = parseFloat(ds.value), cnt = Math.max(1, Math.min(20, parseInt(ni.value)||1));
-    let k = di.value;
-    for(let i=0;i<cnt;i++){
-      if(!log[k]) log[k] = blank();
-      log[k].shot = { done:true, dose };
-      k = addDays(k, 7);
+  det.innerHTML = `<summary class="muted" style="font-size:12px;cursor:pointer">주사 기록 수정 / 지난 주사 추가</summary>`;
+  const fwrap = document.createElement("div"); fwrap.style.cssText = "margin-top:9px;display:flex;flex-direction:column;gap:8px";
+  const msg = document.createElement("div"); msg.className = "muted"; msg.style.cssText = "font-size:11px;min-height:14px";
+
+  const listWrap = document.createElement("div");
+  const drawList = () => {
+    const all = shotDays().slice().reverse();
+    listWrap.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px">기록된 주사 ${all.length}회 — 용량은 바로 고칠 수 있습니다</div>`;
+    if(!all.length){
+      listWrap.innerHTML += `<div class="muted" style="font-size:12px">아직 기록이 없습니다. 아래에서 추가하세요.</div>`;
+      return;
     }
-    persist(); renderToday(); renderTrend();
+    all.forEach(k => {
+      const future = k > keyOf(new Date());
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:7px;padding:4px 0";
+      const dt = document.createElement("span");
+      dt.style.cssText = `flex:1;font-size:12px;color:${future ? "var(--rose)" : "var(--mist)"}`;
+      dt.textContent = `${fmtKey(k)} (${DAY[parseKey(k).getDay()]})` + (future ? " · 미래" : "");
+      const sel = document.createElement("select");
+      sel.className = "inp"; sel.style.cssText = "flex:0 0 auto;height:30px;font-size:11px;padding:0 6px";
+      DOSES.forEach(dv => { const o=document.createElement("option"); o.value=dv; o.textContent=dv+"mg"; sel.appendChild(o); });
+      sel.value = String(log[k].shot.dose);
+      sel.onchange = () => {
+        log[k].shot.dose = parseFloat(sel.value);
+        msg.textContent = `${fmtKey(k)} → ${sel.value}mg으로 수정했습니다.`;
+        persist(); renderTrend();
+      };
+      const del = document.createElement("button");
+      del.className = "setbtn";
+      del.style.cssText = "flex:0 0 auto;height:30px;font-size:11px;padding:0 10px";
+      del.textContent = "삭제";
+      del.onclick = () => {
+        log[k].shot = { done:false, dose:null };
+        msg.textContent = `${fmtKey(k)} 주사 기록을 지웠습니다. 체중·단백질 기록은 그대로입니다.`;
+        persist(); drawList(); renderTrend();
+      };
+      row.appendChild(dt); row.appendChild(sel); row.appendChild(del);
+      listWrap.appendChild(row);
+    });
   };
-  [di, ds, ni, hintEl, ab].forEach(el => fwrap.appendChild(el));
+  drawList();
+  fwrap.appendChild(listWrap);
+
+  // 지난 주사 한 건씩 추가
+  const addWrap = document.createElement("div");
+  addWrap.style.cssText = "border-top:1px solid var(--line);padding-top:9px;margin-top:2px";
+  addWrap.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px">빠진 주사일 추가</div>`;
+  const arow = document.createElement("div");
+  arow.style.cssText = "display:flex;align-items:center;gap:7px";
+  const di = document.createElement("input");
+  di.type = "date"; di.className = "inp"; di.style.cssText = "flex:1;height:34px;font-size:12px";
+  (() => { const t = parseKey(dateKey); const back = (t.getDay() - shotDow() + 7) % 7 || 7; t.setDate(t.getDate() - back); di.value = keyOf(t); })();
+  const ds = document.createElement("select");
+  ds.className = "inp"; ds.style.cssText = "flex:0 0 auto;height:34px;font-size:11px;padding:0 6px";
+  DOSES.forEach(dv => { const o=document.createElement("option"); o.value=dv; o.textContent=dv+"mg"; ds.appendChild(o); });
+  ds.value = String(lastDose(dateKey));
+  const addb = document.createElement("button");
+  addb.className = "setbtn"; addb.style.cssText = "flex:0 0 auto;height:34px;font-size:11px;padding:0 12px";
+  addb.textContent = "추가";
+  addb.onclick = () => {
+    const k = di.value;
+    if(!k) return;
+    if(k > keyOf(new Date())){
+      msg.style.color = "var(--rose)";
+      msg.textContent = "아직 오지 않은 날은 추가할 수 없습니다. 맞은 날 위 버튼을 누르세요.";
+      return;
+    }
+    if(!log[k]) log[k] = blank();
+    log[k].shot = { done:true, dose: parseFloat(ds.value) };
+    msg.style.color = "var(--dim)";
+    msg.textContent = `${fmtKey(k)} · ${ds.value}mg 추가했습니다.`;
+    persist(); drawList(); renderTrend();
+  };
+  arow.appendChild(di); arow.appendChild(ds); arow.appendChild(addb);
+  addWrap.appendChild(arow);
+  fwrap.appendChild(addWrap);
+  fwrap.appendChild(msg);
   det.appendChild(fwrap);
   sh.appendChild(det);
   box.appendChild(sh);
@@ -1292,12 +1382,22 @@ function renderTrend(){
   } else {
     const rows = [
       ["현재", `주사 ${si2.since}일차 · ${si2.dose}mg`],
-      ["직전 주사", `${fmtKey(si2.last)} (${si2.dose}mg ${si2.nth}차)`],
+      ["직전 주사", `${fmtKey(si2.last)} (${si2.dose}mg ${si2.nth}/4차)`],
       ["다음 예정", `${fmtKey(si2.next)}` + (si2.until >= 0 ? ` · D-${si2.until}` : ` · ${-si2.until}일 지남`)],
       ["누적", `${si2.total}회`]
     ];
     let html = rows.map(([a,b])=>`<div class="row" style="padding:5px 0">
       <span class="muted" style="font-size:12px">${a}</span><b style="font-size:13px">${b}</b></div>`).join("");
+    const dbs2 = doseBlockStats(keyOf(new Date()));
+    if(dbs2){
+      const bits = [];
+      if(dbs2.avg !== null) bits.push(`평균 단백질 ${dbs2.avg}g`);
+      if(dbs2.low) bits.push(`60g 미만 ${dbs2.low}일`);
+      if(dbs2.noStool) bits.push(`배변 없음 ${dbs2.noStool}일`);
+      if(dbs2.drop !== null) bits.push(`체중 ${dbs2.drop}kg`);
+      html += `<div class="muted" style="font-size:12px;margin-top:10px">${dbs2.dose}mg 구간 (${fmtKey(dbs2.from)}부터 기록 ${dbs2.days}일)</div>
+        <div style="font-size:12px;margin-top:3px">${bits.length ? bits.join(" · ") : "기록이 아직 없습니다"}</div>`;
+    }
     if(si2.hist.length > 1){
       html += `<div class="muted" style="font-size:12px;margin-top:10px">용량 이력</div>`
         + si2.hist.map(h=>`<div class="row" style="padding:3px 0">
