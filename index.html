@@ -234,6 +234,7 @@
     <div class="stats" id="stats"></div>
     <div class="card" id="wcompare"></div>
     <h2>아침 공복 체중 (kg)</h2>
+    <div id="tnav" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"></div>
     <div class="card" id="wchart"></div>
     <h2>일별 단백질 (g)</h2>
     <div class="card" id="pchart"></div>
@@ -1304,6 +1305,9 @@ function barChart(points){
   </svg>`;
 }
 
+const WIN = 14;              // 한 화면에 보여줄 일수
+let trendOffset = 0;         // 0 = 최신 구간, 1 = 그 이전 구간 …
+
 function renderTrend(){
   const days = Object.keys(log).sort();
   const lab = k => `${parseKey(k).getMonth()+1}/${parseKey(k).getDate()}`;
@@ -1313,6 +1317,37 @@ function renderTrend(){
   document.getElementById("stats").innerHTML =
     [[gym,"헬스"],[yoga,"요가"],[backup,"대체"],[days.length,"기록일"]]
       .map(([n,t])=>`<div class="stat"><b>${n}</b><span>${t}</span></div>`).join("");
+
+  // ── 보이는 구간 계산 ──
+  const maxOff = Math.max(0, Math.ceil(days.length / WIN) - 1);
+  if(trendOffset > maxOff) trendOffset = maxOff;
+  if(trendOffset < 0) trendOffset = 0;
+  const end = days.length - trendOffset * WIN;
+  const start = Math.max(0, end - WIN);
+  const view = days.slice(start, end);
+
+  const nav = document.getElementById("tnav");
+  if(nav){
+    nav.innerHTML = "";
+    const mk = (txt, delta, disabled) => {
+      const b = document.createElement("button");
+      b.className = "setbtn";
+      b.style.cssText = "flex:0 0 auto;height:34px;font-size:13px;padding:0 14px" + (disabled ? ";opacity:.35" : "");
+      b.textContent = txt;
+      b.disabled = !!disabled;
+      b.onclick = () => { trendOffset += delta; renderTrend(); };
+      return b;
+    };
+    const lbl = document.createElement("div");
+    lbl.className = "muted";
+    lbl.style.cssText = "flex:1;text-align:center;font-size:12px";
+    lbl.textContent = view.length
+      ? `${lab(view[0])} ~ ${lab(view[view.length-1])}` + (trendOffset ? ` · ${trendOffset*WIN}일 전` : " · 최근")
+      : "기록 없음";
+    nav.appendChild(mk("‹ 이전", +1, trendOffset >= maxOff));
+    nav.appendChild(lbl);
+    nav.appendChild(mk("다음 ›", -1, trendOffset <= 0));
+  }
 
   const weights = days.map(k=>({k, v:parseFloat(log[k]?.bodyWeight), lab:lab(k)})).filter(x=>!isNaN(x.v));
   const cmp = document.getElementById("wcompare");
@@ -1328,14 +1363,15 @@ function renderTrend(){
     <div class="muted" style="font-size:12px;margin-top:10px">골격근량 22.6kg 유지가 진짜 목표입니다. 체중이 그대로여도 근육이 남으면 성공.</div>`;
   } else cmp.innerHTML = `<div class="muted" style="font-size:13px">체중을 입력하면 전후 비교가 나옵니다.</div>`;
 
-  document.getElementById("wchart").innerHTML = lineChart(weights.slice(-14), null, [
+  const vset = new Set(view);
+  document.getElementById("wchart").innerHTML = lineChart(weights.filter(x=>vset.has(x.k)), null, [
     ...cycleStarts().map(k => ({ k, color:"var(--rose)", label:"생리" })),
     ...shotDays().map(k => ({ k, color:"var(--sage)", label:"주사" }))
   ]);
   document.getElementById("pchart").innerHTML =
-    barChart(days.slice(-14).map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})));
+    barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})));
 
-  const sdays = days.slice(-14);
+  const sdays = view;
   const SCOL = { none:"var(--panel2)", hard:"var(--rose)", normal:"var(--dawn)", loose:"var(--rosetint)" };
   const sgap = daysSinceStool(keyOf(new Date()));
   document.getElementById("schart").innerHTML = sdays.length
