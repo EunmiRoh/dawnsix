@@ -242,6 +242,8 @@
     <div class="card" id="schart"></div>
     <h2>생리 주기</h2>
     <div class="card" id="cchart"></div>
+    <h2>인바디</h2>
+    <div class="card" id="ibchart"></div>
     <h2>마운자로</h2>
     <div class="card" id="mchart"></div>
     <h2>기록</h2>
@@ -437,7 +439,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null} });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -460,6 +462,46 @@ const STOOL = [["none","없음","var(--dim)"],["hard","딱딱","var(--rose)"],["
 const STOOL_LABEL = Object.fromEntries(STOOL.map(([id,l])=>[id,l]));
 // 정상 또는 무름이면서 양이 적지 않을 때만 "제대로 본 날"로 인정 — 딱딱·찔끔은 카운터를 끊지 않는다
 const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="normal"||st.type==="loose") && st.amount!=="small"); };
+/* ─────────── 인바디 ─────────── */
+const inbodyDays = () => Object.keys(log).filter(k => log[k] && log[k].inbody).sort();
+const IB = { smm:"골격근량", fat:"체지방량", pct:"체지방률", w:"체중" };
+
+// 실측 기록 최초 1회만 채운다 (이미 있으면 건드리지 않음)
+function seedInbody(){
+  if(cfg.inbodySeed === 2) return;
+  const seed = {
+    "2026-07-09": { w:78.0, smm:24.0, fat:34.4, pct:44.1, est:true },   // 체지방량은 체중×체지방률 계산값
+    "2026-07-30": { w:75.9, smm:22.6, fat:34.6, pct:45.5 },
+    "2026-08-27": { w:72.7, smm:22.0, fat:32.5, pct:44.7 }
+  };
+  let touched = false;
+  Object.keys(seed).forEach(k => {
+    if(!log[k]) log[k] = blank();
+    if(!log[k].inbody){ log[k].inbody = seed[k]; touched = true; }
+  });
+  cfg.inbodySeed = 2;
+  localStorage.setItem(CKEY, JSON.stringify(cfg));
+  if(touched) persist();
+}
+
+// 직전 측정 대비 변화 + 감량 중 근육이 차지한 비율
+function inbodyDelta(k){
+  const all = inbodyDays();
+  const i = all.indexOf(k);
+  if(i <= 0) return null;
+  const cur = log[k].inbody, prev = log[all[i-1]].inbody;
+  const d = {
+    from: all[i-1],
+    w:   +(cur.w   - prev.w).toFixed(1),
+    smm: +(cur.smm - prev.smm).toFixed(1),
+    fat: +(cur.fat - prev.fat).toFixed(1),
+    pct: +(cur.pct - prev.pct).toFixed(1)
+  };
+  // 체중이 줄었을 때만 의미 있는 비율
+  d.muscleShare = (d.w < 0 && d.smm < 0) ? Math.round((-d.smm / -d.w) * 100) : null;
+  return d;
+}
+
 /* ─────────── 마운자로 주사 ─────────── */
 const DOSES = [2.5, 5, 7.5, 10, 12.5, 15];
 const shotDow = () => (cfg.shotDow === undefined || cfg.shotDow === null) ? 4 : cfg.shotDow;  // 기본 목요일
@@ -681,6 +723,7 @@ function rec(){
   r.cycle = r.cycle || {start:false,end:false};
   r.session = r.session || {am:false,pm:false};
   r.shot = r.shot || {done:false,dose:null};
+  if(r.inbody === undefined) r.inbody = null;
   return r;
 }
 function setsOf(r, id, kind){
@@ -1360,7 +1403,12 @@ function renderTrend(){
       ${diff!==null?`<div style="text-align:right"><div class="muted" style="font-size:12px">변화</div>
         <b style="font-size:18px;color:${diff<0?"var(--sage)":"var(--dawn)"}">${diff>0?"+":""}${diff.toFixed(1)}</b></div>`:""}
     </div>
-    <div class="muted" style="font-size:12px;margin-top:10px">골격근량 22.6kg 유지가 진짜 목표입니다. 체중이 그대로여도 근육이 남으면 성공.</div>`;
+    <div class="muted" style="font-size:12px;margin-top:10px">${(() => {
+        const ib = inbodyDays();
+        if(!ib.length) return "골격근량 유지가 진짜 목표입니다. 체중이 그대로여도 근육이 남으면 성공.";
+        const last = log[ib[ib.length-1]].inbody;
+        return `골격근량 ${last.smm}kg 유지가 진짜 목표입니다 (${fmtKey(ib[ib.length-1])} 측정). 체중이 그대로여도 근육이 남으면 성공.`;
+      })()}</div>`;
   } else cmp.innerHTML = `<div class="muted" style="font-size:13px">체중을 입력하면 전후 비교가 나옵니다.</div>`;
 
   const vset = new Set(view);
@@ -1409,6 +1457,99 @@ function renderTrend(){
       + (ci2.winOK ? `<div class="warn" style="border-color:var(--dawn);background:var(--tint);color:var(--sage)">
           <b>인바디 권장 ${fmtKey(ci2.win.from)} ~ ${fmtKey(ci2.win.to)}</b><br>
           생리 직전·직후엔 체수분이 달라져 골격근량이 실제와 다르게 나옵니다. 7/30 측정과 조건을 맞추려면 이 구간이 낫습니다.</div>` : "");
+  }
+
+  // ── 인바디 ──
+  const ibc = document.getElementById("ibchart");
+  if(ibc){
+    const ibd = inbodyDays();
+    const arrow = v => v === 0 ? "±0" : (v > 0 ? `+${v}` : `${v}`);
+    const col = (v, goodDown) => v === 0 ? "var(--dim)" : ((v < 0) === goodDown ? "var(--sage)" : "var(--rose)");
+    let h = "";
+    if(!ibd.length){
+      h = `<div class="muted" style="font-size:13px">인바디 결과를 입력하면 측정 간 변화가 계산됩니다.</div>`;
+    } else {
+      const last = ibd[ibd.length-1], cur = log[last].inbody, dl = inbodyDelta(last);
+      h += `<div class="muted" style="font-size:12px">최근 측정 ${fmtKey(last)}</div>
+        <div class="row" style="padding:8px 0 2px">
+          <div><div class="muted" style="font-size:11px">골격근량</div><b style="font-size:19px">${cur.smm}<span style="font-size:12px">kg</span></b></div>
+          <div><div class="muted" style="font-size:11px">체지방량</div><b style="font-size:19px">${cur.fat}<span style="font-size:12px">kg</span></b></div>
+          <div><div class="muted" style="font-size:11px">체지방률</div><b style="font-size:19px">${cur.pct}<span style="font-size:12px">%</span></b></div>
+        </div>`;
+      if(dl){
+        h += `<div class="muted" style="font-size:12px;margin-top:12px">${fmtKey(dl.from)} 대비</div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            ${[["체중",dl.w,true,"kg"],["골격근량",dl.smm,false,"kg"],["체지방량",dl.fat,true,"kg"],["체지방률",dl.pct,true,"%p"]]
+              .map(([t,v,gd,u])=>`<div style="flex:1;text-align:center;background:var(--panel2);border-radius:9px;padding:8px 4px">
+                <div class="muted" style="font-size:10px">${t}</div>
+                <b style="font-size:14px;color:${col(v,gd)}">${arrow(v)}${u}</b></div>`).join("")}
+          </div>`;
+        if(dl.muscleShare !== null){
+          const ok = dl.muscleShare <= 25;
+          h += `<div class="warn" style="border-color:${ok?"var(--sage)":"var(--rose)"};background:var(--tint);color:${ok?"var(--sage)":"var(--rose)"}">
+            빠진 ${-dl.w}kg 중 <b>근육이 ${dl.muscleShare}%</b> (${-dl.smm}kg), 지방이 ${-dl.fat}kg.
+            ${ok ? "근손실 방지가 되고 있습니다. 보통 20~40%인데 그보다 낮습니다."
+                 : "근육 비중이 높습니다. 감량 속도를 늦추고 단백질·근력운동을 우선하세요."}</div>`;
+        }
+      }
+      if(ibd.length > 1){
+        h += `<div class="muted" style="font-size:12px;margin-top:12px">측정 이력</div>`
+          + ibd.slice().reverse().map(k=>{
+              const v = log[k].inbody;
+              return `<div class="row" style="padding:4px 0">
+                <span class="muted" style="font-size:12px">${fmtKey(k)}</span>
+                <span style="font-size:12px">체중 ${v.w} · 근육 ${v.smm} · 지방 ${v.fat}${v.est?"*":""} · ${v.pct}%</span></div>`;
+            }).join("")
+          + (ibd.some(k=>log[k].inbody.est) ? `<div class="muted" style="font-size:11px;margin-top:6px">* 체지방량은 체중×체지방률로 계산한 값입니다.</div>` : "");
+      }
+    }
+    // 입력 폼
+    h += `<details style="margin-top:12px"><summary class="muted" style="font-size:12px;cursor:pointer">인바디 결과 입력 / 수정</summary>
+      <div id="ibform" style="margin-top:9px"></div></details>`;
+    ibc.innerHTML = h;
+
+    const f = document.getElementById("ibform");
+    if(f){
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:7px";
+      const di = document.createElement("input");
+      di.type = "date"; di.className = "inp"; di.style.cssText = "width:100%;height:36px;font-size:12px";
+      di.value = keyOf(new Date());
+      const mkn = (ph) => { const i=document.createElement("input"); i.type="number"; i.step="0.1";
+        i.className="inp"; i.style.cssText="flex:1;height:36px;font-size:12px;min-width:0"; i.placeholder=ph; return i; };
+      const iw = mkn("체중 kg"), ism = mkn("골격근량 kg"), ifat = mkn("체지방량 kg"), ipct = mkn("체지방률 %");
+      const r1 = document.createElement("div"); r1.style.cssText="display:flex;gap:6px";
+      r1.appendChild(iw); r1.appendChild(ism);
+      const r2 = document.createElement("div"); r2.style.cssText="display:flex;gap:6px";
+      r2.appendChild(ifat); r2.appendChild(ipct);
+      const msg = document.createElement("div"); msg.className="muted"; msg.style.cssText="font-size:11px;min-height:14px";
+      const fill = () => {
+        const v = log[di.value] && log[di.value].inbody;
+        iw.value = v ? v.w : ""; ism.value = v ? v.smm : "";
+        ifat.value = v ? v.fat : ""; ipct.value = v ? v.pct : "";
+        msg.textContent = v ? "이 날짜에 기록이 있습니다. 저장하면 덮어씁니다." : "";
+      };
+      di.onchange = fill; fill();
+      const brow = document.createElement("div"); brow.className="setrow"; brow.style.marginTop="0";
+      const sb = document.createElement("button"); sb.className="setbtn"; sb.textContent="저장";
+      sb.onclick = () => {
+        const w = parseFloat(iw.value), sm = parseFloat(ism.value),
+              ft = parseFloat(ifat.value), pc = parseFloat(ipct.value);
+        if([w,sm,ft,pc].some(x => isNaN(x))){
+          msg.style.color = "var(--rose)"; msg.textContent = "네 항목 모두 입력해주세요."; return;
+        }
+        if(!log[di.value]) log[di.value] = blank();
+        log[di.value].inbody = { w, smm:sm, fat:ft, pct:pc };
+        persist(); renderTrend();
+      };
+      const db = document.createElement("button"); db.className="setbtn"; db.textContent="이 날짜 삭제";
+      db.onclick = () => {
+        if(log[di.value] && log[di.value].inbody){ log[di.value].inbody = null; persist(); renderTrend(); }
+      };
+      brow.appendChild(sb); brow.appendChild(db);
+      [di, r1, r2, brow, msg].forEach(el => wrap.appendChild(el));
+      f.appendChild(wrap);
+    }
   }
 
   const si2 = shotInfo(keyOf(new Date()));
@@ -1470,6 +1611,7 @@ function renderTrend(){
     bits.push(`단백질 ${proteinOf(r)}g`);
     if(r.stool?.type) bits.push("배변 " + STOOL_LABEL[r.stool.type] + (r.stool.amount==="small" ? "·적음" : ""));
     if(r.shot?.done) bits.push(`주사 ${r.shot.dose}mg`);
+    if(r.inbody) bits.push(`인바디 근육 ${r.inbody.smm}`);
     if(r.cycle?.start) bits.push("생리 시작");
     if(r.cycle?.end) bits.push("생리 종료");
     return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
@@ -1990,7 +2132,9 @@ document.getElementById("login").onclick = async () => {
 /* ─────────── 시작 ─────────── */
 (async () => {
   const loaded = await store.load();
-  if(loaded){ log = loaded; render(); }
+  if(loaded) log = loaded;
+  seedInbody();
+  render();
   setSync("준비됨");
 })();
 render();
