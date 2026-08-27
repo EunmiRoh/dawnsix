@@ -485,13 +485,17 @@ function seedInbody(){
 }
 
 // 직전 측정 대비 변화 + 감량 중 근육이 차지한 비율
-function inbodyDelta(k){
+let ibBase = null;   // 선택한 기준일 (null이면 직전 측정)
+
+function inbodyDelta(k, baseKey){
   const all = inbodyDays();
   const i = all.indexOf(k);
-  if(i <= 0) return null;
-  const cur = log[k].inbody, prev = log[all[i-1]].inbody;
+  if(i < 0) return null;
+  const base = (baseKey && baseKey !== k && log[baseKey] && log[baseKey].inbody) ? baseKey : (i > 0 ? all[i-1] : null);
+  if(!base) return null;
+  const cur = log[k].inbody, prev = log[base].inbody;
   const d = {
-    from: all[i-1],
+    from: base,
     w:   +(cur.w   - prev.w).toFixed(1),
     smm: +(cur.smm - prev.smm).toFixed(1),
     fat: +(cur.fat - prev.fat).toFixed(1),
@@ -1469,7 +1473,9 @@ function renderTrend(){
     if(!ibd.length){
       h = `<div class="muted" style="font-size:13px">인바디 결과를 입력하면 측정 간 변화가 계산됩니다.</div>`;
     } else {
-      const last = ibd[ibd.length-1], cur = log[last].inbody, dl = inbodyDelta(last);
+      const last = ibd[ibd.length-1], cur = log[last].inbody;
+      if(ibBase && (ibBase === last || !ibd.includes(ibBase))) ibBase = null;
+      const dl = inbodyDelta(last, ibBase);
       h += `<div class="muted" style="font-size:12px">최근 측정 ${fmtKey(last)}</div>
         <div class="row" style="padding:8px 0 2px">
           <div><div class="muted" style="font-size:11px">골격근량</div><b style="font-size:19px">${cur.smm}<span style="font-size:12px">kg</span></b></div>
@@ -1477,13 +1483,21 @@ function renderTrend(){
           <div><div class="muted" style="font-size:11px">체지방률</div><b style="font-size:19px">${cur.pct}<span style="font-size:12px">%</span></b></div>
         </div>`;
       if(dl){
-        h += `<div class="muted" style="font-size:12px;margin-top:12px">${fmtKey(dl.from)} 대비</div>
+        h += `<div style="display:flex;align-items:center;gap:7px;margin-top:12px">
+            <span class="muted" style="font-size:12px">기준일</span>
+            <select id="ibbase" class="inp" style="height:30px;font-size:11px;padding:0 6px">
+              ${ibd.filter(k=>k!==last).reverse().map(k=>
+                `<option value="${k}"${k===dl.from?" selected":""}>${fmtKey(k)}</option>`).join("")}
+            </select>
+            <span class="muted" style="font-size:12px">대비</span>
+          </div>
           <div style="display:flex;gap:6px;margin-top:6px">
             ${[["체중",dl.w,true,"kg"],["골격근량",dl.smm,false,"kg"],["체지방량",dl.fat,true,"kg"],["체지방률",dl.pct,true,"%p"]]
               .map(([t,v,gd,u])=>`<div style="flex:1;text-align:center;background:var(--panel2);border-radius:9px;padding:8px 4px">
                 <div class="muted" style="font-size:10px">${t}</div>
                 <b style="font-size:14px;color:${col(v,gd)}">${arrow(v)}${u}</b></div>`).join("")}
           </div>`;
+        h += `<div class="muted" style="font-size:11px;margin-top:6px">${fmtKey(dl.from)} → ${fmtKey(last)} · ${dayDiff(last, dl.from)}일</div>`;
         if(dl.muscleShare !== null){
           const ok = dl.muscleShare <= 25;
           h += `<div class="warn" style="border-color:${ok?"var(--sage)":"var(--rose)"};background:var(--tint);color:${ok?"var(--sage)":"var(--rose)"}">
@@ -1507,6 +1521,9 @@ function renderTrend(){
     h += `<details style="margin-top:12px"><summary class="muted" style="font-size:12px;cursor:pointer">인바디 결과 입력 / 수정</summary>
       <div id="ibform" style="margin-top:9px"></div></details>`;
     ibc.innerHTML = h;
+
+    const bsel = document.getElementById("ibbase");
+    if(bsel) bsel.onchange = () => { ibBase = bsel.value; renderTrend(); };
 
     const f = document.getElementById("ibform");
     if(f){
