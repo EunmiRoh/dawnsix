@@ -40,6 +40,8 @@
   .setbtn{flex:1;height:42px;font-size:12px;border-radius:9px;background:var(--panel2);border-color:transparent;color:var(--dim)}
   .setbtn.on{background:var(--dawn);color:#fff;border-color:var(--dawn);box-shadow:0 2px 8px rgba(75,92,232,.22)}
   .kg{width:66px;text-align:center;height:40px}
+  .hscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .hscroll::-webkit-scrollbar{display:none}
   .inp{height:40px;font-size:13px;padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--mist)}
   .big{width:100%;min-height:64px;font-size:16px;font-weight:700;border:1px dashed var(--dawn);color:var(--dawn);background:var(--tint);text-align:left;padding:14px 18px;border-radius:14px}
   .big.on{background:var(--dawn);color:#fff;border-style:solid;box-shadow:0 3px 12px rgba(75,92,232,.24)}
@@ -448,6 +450,21 @@ const ratioOf = (r,kind) => {
   return 0;
 };
 const gymOK = r => !!(r && (r.arrived || r.backup || ratioOf(r,"gym") >= .5));
+
+// 아무 내용도 없는 껍데기 기록 — 그래프에서 제외한다
+function isEmptyDay(r, countInbody){
+  if(!r) return true;
+  if(countInbody !== false && r.inbody) return false;
+  if(r.bodyWeight || r.arrived || r.backup) return false;
+  if(r.yoga && r.yoga.done) return false;
+  if(r.stool && r.stool.type) return false;
+  if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
+  if(r.shot && r.shot.done) return false;
+  if(r.session && (r.session.am || r.session.pm)) return false;
+  if(r.meals && Object.values(r.meals).some(v => +v > 0)) return false;
+  if(r.sets && Object.values(r.sets).some(v => v && (Array.isArray(v) ? v.length : Object.keys(v).length))) return false;
+  return true;
+}
 const sessionLabel = r => {
   const sn = r && r.session; if(!sn) return "";
   if(sn.am && sn.pm) return "아침·저녁";
@@ -1135,15 +1152,15 @@ function renderToday(){
     sinfo.textContent = "주사 맞은 날 눌러두면 며칠차 계산이 시작됩니다.";
   } else {
     const b2 = [`<b style="color:var(--mist)">주사 ${si.since}일차 · ${si.dose}mg</b>`];
-    b2.push(`직전 주사 ${fmtKey(si.last)} (${si.dose}mg ${si.nth}/4차)`);
+    b2.push(`직전 주사 ${fmtKey(si.last)} (${si.dose}mg ${si.nth}차)`);
     b2.push(si.until > 0 ? `다음 주사 ${fmtKey(si.next)} · D-${si.until}` : si.until === 0 ? `<b style="color:var(--rose)">오늘이 주사일입니다</b>` : `<b style="color:var(--rose)">예정일 ${-si.until}일 지남</b>`);
     if(si.since <= 1) b2.push(`식욕 저하가 제일 심한 구간입니다. 60g 하한만 지키세요.`);
     sinfo.innerHTML = b2.join("<br>");
-    if(si.nth >= 4){
+    if(si.nth >= 8){
       const dbs = doseBlockStats(dateKey);
       const cons = document.createElement("div"); cons.className = "warn";
       cons.style.cssText = "border-color:var(--sage);background:var(--tint);color:var(--sage)";
-      let t = `<b>${si.dose}mg ${si.nth}회 채웠습니다 — 증량 상담 시점입니다.</b>`;
+      let t = `<b>${si.dose}mg ${si.nth}회째입니다.</b> 다음 진료 때 한 번 짚어볼 만한 시점이에요.`;
       if(dbs){
         const bits = [];
         if(dbs.avg !== null) bits.push(`평균 단백질 ${dbs.avg}g`);
@@ -1152,7 +1169,7 @@ function renderToday(){
         if(dbs.drop !== null) bits.push(`체중 ${dbs.drop}kg`);
         if(bits.length) t += `<br>이 구간 기록 — ${bits.join(" · ")}`;
       }
-      t += `<br>증량 여부는 병원 판단입니다. 이 숫자를 그대로 말씀하시면 됩니다.`;
+      t += `<br>용량 유지·조정은 병원 판단입니다. 이 숫자를 그대로 말씀하시면 됩니다.`;
       cons.innerHTML = t;
       sh.appendChild(cons);
     }
@@ -1311,16 +1328,21 @@ function renderToday(){
   }
 }
 
+const CH = { pad:34, day:30, right:12, h:158 };
+const chartW = n => CH.pad + Math.max(n,1)*CH.day + CH.right;
+
 function lineChart(points, unit, marks){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
-  const W=320,H=150,P=30;
+  const H=CH.h, P=CH.pad;
+  const slots = (points.slots || points.length);
+  const W = chartW(slots);
   const vals = points.map(p=>p.v), mn = Math.min(...vals)-.6, mx = Math.max(...vals)+.6, span = (mx-mn)||1;
   const pts = points.map((p,i)=>({
-    x: P + (points.length===1 ? (W-P*2)/2 : i*(W-P*2)/(points.length-1)),
+    x: P + ((p.i === undefined ? i : p.i))*CH.day + CH.day/2,
     y: H-26 - ((p.v-mn)/span)*(H-50), ...p }));
   const path = pts.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
-    <line x1="${P}" y1="${H-26}" x2="${W-8}" y2="${H-26}" stroke="var(--line)"/>
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
+    <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
     <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
     <text x="2" y="${H-28}" font-size="9" fill="var(--dim)">${mn.toFixed(1)}</text>
     ${(marks||[]).filter(m=>pts.some(p=>p.k===(m.k||m))).map(m=>{
@@ -1338,12 +1360,12 @@ function lineChart(points, unit, marks){
 
 function barChart(points){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
-  const W=320,H=150,P=30;
+  const H=CH.h, P=CH.pad, W=chartW(points.length);
   const top = Math.max(GOAL, ...points.map(p=>p.v))*1.1;
-  const bw = (W-P-8)/points.length, gy = H-26-(GOAL/top)*(H-50);
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
-    <line x1="${P}" y1="${H-26}" x2="${W-8}" y2="${H-26}" stroke="var(--line)"/>
-    <line x1="${P}" y1="${gy}" x2="${W-8}" y2="${gy}" stroke="var(--sage)" stroke-dasharray="3 3"/>
+  const bw = CH.day, gy = H-26-(GOAL/top)*(H-50);
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
+    <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
+    <line x1="${P}" y1="${gy}" x2="${W-CH.right}" y2="${gy}" stroke="var(--sage)" stroke-dasharray="3 3"/>
     <text x="2" y="${gy+3}" font-size="9" fill="var(--sage)">${GOAL}</text>
     ${points.map((p,i)=>{ const h=(p.v/top)*(H-50); return `
       <rect x="${P+i*bw+bw*.15}" y="${H-26-h}" width="${bw*.7}" height="${Math.max(h,0)}" rx="2" fill="${p.v>=GOAL?"var(--sage)":"var(--rose)"}"/>
@@ -1352,11 +1374,11 @@ function barChart(points){
   </svg>`;
 }
 
-const WIN = 14;              // 한 화면에 보여줄 일수
-let trendOffset = 0;         // 0 = 최신 구간, 1 = 그 이전 구간 …
+let trendScroll = null;      // 추이 그래프 가로 스크롤 위치 (null이면 최신으로)
 
 function renderTrend(){
-  const days = Object.keys(log).sort();
+  const todayKey = keyOf(new Date());
+  const days = Object.keys(log).filter(k => k <= todayKey && !isEmptyDay(log[k], false)).sort();
   const lab = k => `${parseKey(k).getMonth()+1}/${parseKey(k).getDate()}`;
   const gym = days.filter(k => (isGymDay(parseKey(k).getDay()) && gymOK(log[k])) || (!isGymDay(parseKey(k).getDay()) && log[k]?.backup)).length;
   const yoga = days.filter(k => log[k]?.yoga?.done).length;
@@ -1365,35 +1387,16 @@ function renderTrend(){
     [[gym,"헬스"],[yoga,"요가"],[backup,"대체"],[days.length,"기록일"]]
       .map(([n,t])=>`<div class="stat"><b>${n}</b><span>${t}</span></div>`).join("");
 
-  // ── 보이는 구간 계산 ──
-  const maxOff = Math.max(0, Math.ceil(days.length / WIN) - 1);
-  if(trendOffset > maxOff) trendOffset = maxOff;
-  if(trendOffset < 0) trendOffset = 0;
-  const end = days.length - trendOffset * WIN;
-  const start = Math.max(0, end - WIN);
-  const view = days.slice(start, end);
+  // 전체 기간을 한 장으로 그리고 가로 스크롤로 본다
+  const view = days;
 
   const nav = document.getElementById("tnav");
   if(nav){
-    nav.innerHTML = "";
-    const mk = (txt, delta, disabled) => {
-      const b = document.createElement("button");
-      b.className = "setbtn";
-      b.style.cssText = "flex:0 0 auto;height:34px;font-size:13px;padding:0 14px" + (disabled ? ";opacity:.35" : "");
-      b.textContent = txt;
-      b.disabled = !!disabled;
-      b.onclick = () => { trendOffset += delta; renderTrend(); };
-      return b;
-    };
-    const lbl = document.createElement("div");
-    lbl.className = "muted";
-    lbl.style.cssText = "flex:1;text-align:center;font-size:12px";
-    lbl.textContent = view.length
-      ? `${lab(view[0])} ~ ${lab(view[view.length-1])}` + (trendOffset ? ` · ${trendOffset*WIN}일 전` : " · 최근")
-      : "기록 없음";
-    nav.appendChild(mk("‹ 이전", +1, trendOffset >= maxOff));
-    nav.appendChild(lbl);
-    nav.appendChild(mk("다음 ›", -1, trendOffset <= 0));
+    nav.className = "muted";
+    nav.style.cssText = "font-size:12px;margin-bottom:8px";
+    nav.textContent = !view.length ? "기록 없음"
+      : `${lab(view[0])} ~ ${lab(view[view.length-1])} · ${view.length}일`
+        + (view.length > 10 ? " · 좌우로 밀어보세요" : "");
   }
 
   const weights = days.map(k=>({k, v:parseFloat(log[k]?.bodyWeight), lab:lab(k)})).filter(x=>!isNaN(x.v));
@@ -1415,27 +1418,30 @@ function renderTrend(){
       })()}</div>`;
   } else cmp.innerHTML = `<div class="muted" style="font-size:13px">체중을 입력하면 전후 비교가 나옵니다.</div>`;
 
-  const vset = new Set(view);
-  document.getElementById("wchart").innerHTML = lineChart(weights.filter(x=>vset.has(x.k)), null, [
+  const wrapScroll = html => `<div class="hscroll" data-sync="1">${html}</div>`;
+  // 다른 그래프와 x축을 맞추려고 날짜 슬롯 번호를 함께 넘긴다
+  const wpts = view.map((k,i)=>({ k, i, v:parseFloat(log[k]?.bodyWeight), lab:lab(k) })).filter(x=>!isNaN(x.v));
+  wpts.slots = view.length;
+  document.getElementById("wchart").innerHTML = wrapScroll(lineChart(wpts, null, [
     ...cycleStarts().map(k => ({ k, color:"var(--rose)", label:"생리" })),
     ...shotDays().map(k => ({ k, color:"var(--sage)", label:"주사" }))
-  ]);
+  ]));
   document.getElementById("pchart").innerHTML =
-    barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})));
+    wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)}))));
 
   const sdays = view;
   const SCOL = { none:"var(--panel2)", hard:"var(--rose)", normal:"var(--dawn)", loose:"var(--rosetint)" };
   const sgap = daysSinceStool(keyOf(new Date()));
   document.getElementById("schart").innerHTML = sdays.length
-    ? `<div style="display:flex;gap:4px;align-items:flex-end">` + sdays.map(k=>{
+    ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(sdays.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + sdays.map(k=>{
         const t = log[k]?.stool?.type, sm = log[k]?.stool?.amount==="small";
         const bg = t ? SCOL[t] : "transparent";
         const bd = t==="loose" ? "var(--rose)" : (t ? bg : "var(--line)");
-        return `<div style="flex:1;text-align:center">
+        return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
           <div style="height:26px;border-radius:7px;background:${bg};border:1.5px solid ${bd}"></div>
           <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
           <div class="muted" style="font-size:9px;color:${sm?"var(--rose)":"transparent"}">적음</div></div>`;
-      }).join("") + `</div>
+      }).join("") + `</div></div>
       <div class="muted" style="font-size:11px;margin-top:10px">
         <span style="color:var(--dawn)">■</span> 정상 &nbsp;
         <span style="color:var(--rose)">■</span> 딱딱 &nbsp;
@@ -1443,6 +1449,28 @@ function renderTrend(){
         <span style="color:var(--dim)">■</span> 없음</div>
       <div class="muted" style="font-size:12px;margin-top:8px">${sgap===null?"제대로 본 날 기록 없음":sgap===0?"오늘 정상":`마지막 정상 배변 후 ${sgap}일`}</div>`
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
+
+  // 세 그래프 가로 스크롤 묶기 — 마지막 위치 유지, 처음엔 최신(오른쪽 끝)
+  const boxes = [...document.querySelectorAll('#tab-trend .hscroll[data-sync="1"]')];
+  if(boxes.length){
+    let lock = false;
+    boxes.forEach(b => {
+      b.onscroll = () => {
+        if(lock) return;
+        lock = true;
+        trendScroll = b.scrollLeft;
+        boxes.forEach(o => { if(o !== b) o.scrollLeft = b.scrollLeft; });
+        requestAnimationFrame(() => { lock = false; });
+      };
+    });
+    requestAnimationFrame(() => {
+      const max = Math.max(0, boxes[0].scrollWidth - boxes[0].clientWidth);
+      if(max <= 0) return;                       // 스크롤할 폭이 없으면 그대로 둔다
+      const to = (trendScroll === null) ? max : Math.min(trendScroll, max);
+      boxes.forEach(b => { b.scrollLeft = to; });
+      trendScroll = to;
+    });
+  }
 
   const ci2 = cycleInfo(keyOf(new Date()));
   const cc = document.getElementById("cchart");
@@ -1576,7 +1604,7 @@ function renderTrend(){
   } else {
     const rows = [
       ["현재", `주사 ${si2.since}일차 · ${si2.dose}mg`],
-      ["직전 주사", `${fmtKey(si2.last)} (${si2.dose}mg ${si2.nth}/4차)`],
+      ["직전 주사", `${fmtKey(si2.last)} (${si2.dose}mg ${si2.nth}차)`],
       ["다음 예정", `${fmtKey(si2.next)}` + (si2.until >= 0 ? ` · D-${si2.until}` : ` · ${-si2.until}일 지남`)],
       ["누적", `${si2.total}회`]
     ];
