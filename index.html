@@ -2141,13 +2141,21 @@ document.getElementById("surl").value = cfg.url || "";
 document.getElementById("skey").value = cfg.key || "";
 
 async function connect(){
-  if(!cfg.url || !cfg.key || !window.supabase) return;
-  sb = window.supabase.createClient(cfg.url, cfg.key);
-  const { data } = await sb.auth.getSession();
-  user = data?.session?.user || null;
-  sb.auth.onAuthStateChange(async (_e, s) => { user = s?.user || null; if(user) await pull(); updateAuth(); });
-  if(user) await pull();
-  updateAuth();
+  if(!cfg.url || !cfg.key) return { error:"URL 또는 key가 비어 있습니다." };
+  if(!window.supabase) return { error:"Supabase 라이브러리 로드 실패 (새로고침 후 다시 시도)" };
+  try {
+    sb = window.supabase.createClient(cfg.url, cfg.key);
+    const { data, error } = await sb.auth.getSession();
+    if(error) return { error: error.message };
+    user = data?.session?.user || null;
+    sb.auth.onAuthStateChange(async (_e, s) => { user = s?.user || null; if(user) await pull(); updateAuth(); });
+    if(user) await pull();
+    updateAuth();
+    return { ok:true };
+  } catch(e){
+    sb = null;
+    return { error: e.message || String(e) };
+  }
 }
 function updateAuth(){
   const msg = document.getElementById("authmsg");
@@ -2163,14 +2171,29 @@ async function pull(){
   if(!error) push();
 }
 document.getElementById("ssave").onclick = async () => {
-  cfg = { url: document.getElementById("surl").value.trim(), key: document.getElementById("skey").value.trim() };
+  const msg = document.getElementById("authmsg");
+  const url = document.getElementById("surl").value.trim();
+  const key = document.getElementById("skey").value.trim();
+  if(!url || !key){ msg.textContent = "URL과 key를 모두 넣어주세요."; return; }
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(url)){
+    msg.textContent = "URL 형식을 확인하세요. https://xxxx.supabase.co 여야 합니다."; return;
+  }
+  if(!window.supabase){
+    msg.textContent = "Supabase 라이브러리를 불러오지 못했습니다. 새로고침하거나 네트워크를 확인하세요."; return;
+  }
+  cfg = { ...cfg, url: url.replace(/\/$/, ""), key };   // 주사 요일 등 기존 설정 유지
   localStorage.setItem(CKEY, JSON.stringify(cfg));
-  await connect();
+  msg.textContent = "연결 중…";
+  const r = await connect();
+  if(r && r.error) msg.textContent = "연결 실패: " + r.error;
 };
 document.getElementById("login").onclick = async () => {
-  if(!sb) return alert("먼저 URL과 key를 저장하세요.");
+  const msg0 = document.getElementById("authmsg");
+  if(!sb){ msg0.textContent = "먼저 위에서 URL과 key를 저장하고 연결하세요."; return; }
   const email = document.getElementById("email").value.trim();
-  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.href } });
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ msg0.textContent = "이메일 주소를 확인해주세요."; return; }
+  msg0.textContent = "메일 보내는 중…";
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin + location.pathname } });
   document.getElementById("authmsg").textContent = error ? ("오류: "+error.message) : "메일함을 확인하세요. 링크를 누르면 로그인됩니다.";
 };
 
@@ -2180,7 +2203,8 @@ document.getElementById("login").onclick = async () => {
   if(loaded) log = loaded;
   seedInbody();
   render();
-  setSync("준비됨");
+  if(cfg.url && cfg.key && !window.supabase) setSync("라이브러리 로드 실패");
+  else setSync("준비됨");
 })();
 render();
 connect();
