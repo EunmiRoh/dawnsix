@@ -1375,6 +1375,7 @@ function barChart(points){
 }
 
 let trendScroll = null;      // 추이 그래프 가로 스크롤 위치 (null이면 최신으로)
+let wBase = null;            // 누적 카드 기준일 (null이면 첫 기록)
 
 function renderTrend(){
   const todayKey = keyOf(new Date());
@@ -1402,13 +1403,24 @@ function renderTrend(){
   const weights = days.map(k=>({k, v:parseFloat(log[k]?.bodyWeight), lab:lab(k)})).filter(x=>!isNaN(x.v));
   const cmp = document.getElementById("wcompare");
   if(weights.length){
-    const f = weights[0], l = weights[weights.length-1], diff = weights.length>1 ? l.v-f.v : null;
+    const l = weights[weights.length-1];
+    // 기준일이 사라졌거나 최근과 같으면 첫 기록으로
+    if(wBase && (wBase === l.k || !weights.some(x=>x.k===wBase))) wBase = null;
+    const f = wBase ? weights.find(x=>x.k===wBase) : weights[0];
+    const diff = (weights.length>1 && f.k !== l.k) ? l.v-f.v : null;
+    const gap = f.k !== l.k ? dayDiff(l.k, f.k) : 0;
     cmp.innerHTML = `<div class="row">
-      <div><div class="muted" style="font-size:12px">처음 (${f.lab})</div><b style="font-size:18px">${f.v.toFixed(1)} kg</b></div>
+      <div><div class="muted" style="font-size:12px">기준 (${f.lab})</div><b style="font-size:18px">${f.v.toFixed(1)} kg</b></div>
       <div class="muted">→</div>
       <div style="text-align:right"><div class="muted" style="font-size:12px">최근 (${l.lab})</div><b style="font-size:18px">${l.v.toFixed(1)} kg</b></div>
       ${diff!==null?`<div style="text-align:right"><div class="muted" style="font-size:12px">변화</div>
         <b style="font-size:18px;color:${diff<0?"var(--sage)":"var(--dawn)"}">${diff>0?"+":""}${diff.toFixed(1)}</b></div>`:""}
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:12px">
+      <select id="wbase" class="inp" style="height:30px;font-size:11px;padding:0 6px">
+        ${weights.slice(0,-1).map(x=>`<option value="${x.k}"${x.k===f.k?" selected":""}>${x.lab}</option>`).reverse().join("")}
+      </select>
+      <span class="muted" style="font-size:12px">부터 ${gap}일${diff!==null&&gap>0?` · 주 평균 ${(diff/gap*7).toFixed(2)}kg`:""}</span>
     </div>
     <div class="muted" style="font-size:12px;margin-top:10px">${(() => {
         const ib = inbodyDays();
@@ -1417,6 +1429,8 @@ function renderTrend(){
         return `골격근량 ${last.smm}kg 유지가 진짜 목표입니다 (${fmtKey(ib[ib.length-1])} 측정). 체중이 그대로여도 근육이 남으면 성공.`;
       })()}</div>`;
   } else cmp.innerHTML = `<div class="muted" style="font-size:13px">체중을 입력하면 전후 비교가 나옵니다.</div>`;
+  const wb = document.getElementById("wbase");
+  if(wb) wb.onchange = () => { wBase = wb.value; renderTrend(); };
 
   const wrapScroll = html => `<div class="hscroll" data-sync="1">${html}</div>`;
   // 다른 그래프와 x축을 맞추려고 날짜 슬롯 번호를 함께 넘긴다
