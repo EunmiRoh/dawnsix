@@ -485,18 +485,19 @@ const IB = { smm:"골격근량", fat:"체지방량", pct:"체지방률", w:"체�
 
 // 실측 기록 최초 1회만 채운다 (이미 있으면 건드리지 않음)
 function seedInbody(){
-  if(cfg.inbodySeed === 2) return;
+  if(cfg.inbodySeed === 3) return;
   const seed = {
     "2026-07-09": { w:78.0, smm:24.0, fat:34.4, pct:44.1, est:true },   // 체지방량은 체중×체지방률 계산값
     "2026-07-30": { w:75.9, smm:22.6, fat:34.6, pct:45.5 },
-    "2026-08-27": { w:72.7, smm:22.0, fat:32.5, pct:44.7 }
+    "2026-08-27": { w:72.7, smm:22.0, fat:32.5, pct:44.7 },
+    "2026-09-23": { w:73.0, smm:23.7, fat:29.9, pct:41.0 }
   };
   let touched = false;
   Object.keys(seed).forEach(k => {
     if(!log[k]) log[k] = blank();
     if(!log[k].inbody){ log[k].inbody = seed[k]; touched = true; }
   });
-  cfg.inbodySeed = 2;
+  cfg.inbodySeed = 3;
   localStorage.setItem(CKEY, JSON.stringify(cfg));
   if(touched) persist();
 }
@@ -1546,6 +1547,14 @@ function renderTrend(){
             빠진 ${-dl.w}kg 중 <b>근육이 ${dl.muscleShare}%</b> (${-dl.smm}kg), 지방이 ${-dl.fat}kg.
             ${ok ? "근손실 방지가 되고 있습니다. 보통 20~40%인데 그보다 낮습니다."
                  : "근육 비중이 높습니다. 감량 속도를 늦추고 단백질·근력운동을 우선하세요."}</div>`;
+        } else if(dl.smm > 0 && dl.fat < 0){
+          // 근육이 늘면서 지방이 빠진 구간 — 감량 중엔 드문 결과
+          h += `<div class="warn" style="border-color:var(--sage);background:var(--tint);color:var(--sage)">
+            <b>근육 +${dl.smm}kg, 지방 ${dl.fat}kg.</b>
+            체중이 ${dl.w >= 0 ? "그대로여도" : "줄면서"} 근육이 늘었습니다. 감량 중에는 드문 결과예요.</div>`;
+        } else if(dl.smm < 0 && dl.w >= 0){
+          h += `<div class="warn" style="border-color:var(--rose);background:var(--tint);color:var(--rose)">
+            체중은 유지인데 <b>근육이 ${dl.smm}kg</b> 줄었습니다. 단백질과 근력운동을 먼저 챙기세요.</div>`;
         }
       }
       if(ibd.length > 1){
