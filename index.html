@@ -1427,7 +1427,7 @@ function barChart(points){
 }
 
 let trendScroll = null;      // 추이 그래프 가로 스크롤 위치 (null이면 최신으로)
-let wBase = null;            // 누적 카드 기준일 (null이면 첫 기록)
+let wBase = null;            // 누적 카드 기준일 (null이면 최근 기록 1주 전)
 
 function renderTrend(){
   const todayKey = keyOf(new Date());
@@ -1456,9 +1456,12 @@ function renderTrend(){
   const cmp = document.getElementById("wcompare");
   if(weights.length){
     const l = weights[weights.length-1];
-    // 기준일이 사라졌거나 최근과 같으면 첫 기록으로
+    // 기본 기준일 = 최근 기록 7일 전 (그날 기록이 없으면 그 이전 가장 가까운 날, 없으면 첫 기록)
+    const wkAgo = addDays(l.k, -7);
+    const defBase = weights.slice(0,-1).reverse().find(x => x.k <= wkAgo) || weights[0];
+    // 기준일이 사라졌거나 최근과 같으면 기본값으로
     if(wBase && (wBase === l.k || !weights.some(x=>x.k===wBase))) wBase = null;
-    const f = wBase ? weights.find(x=>x.k===wBase) : weights[0];
+    const f = wBase ? weights.find(x=>x.k===wBase) : defBase;
     const diff = (weights.length>1 && f.k !== l.k) ? l.v-f.v : null;
     const gap = f.k !== l.k ? dayDiff(l.k, f.k) : 0;
     cmp.innerHTML = `<div class="row">
