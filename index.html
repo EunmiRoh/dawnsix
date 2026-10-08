@@ -923,10 +923,36 @@ const store = {
   }
 };
 let saveTimer = null;
+// ── 기기 간 병합 ──
+// 날짜별 마지막 수정 시각(_t)을 남겨, 두 기기가 같은 날짜를 갖고 있으면 더 최근에 고친 쪽이 이기게 한다.
+// 빈 기록(화면만 열어서 생긴 껍데기)은 내용 있는 기록을 절대 덮지 못한다. (10/9 PC의 빈 10/8이 폰 기록을 덮은 사고)
+let snap = {};
+const recSig = r => { if(!r) return ""; const { _t, ...rest } = r; return JSON.stringify({ ...blank(), ...rest }); };   // rec()의 기본값 보충은 변경으로 치지 않음
+function resetSnap(){ snap = {}; Object.keys(log).forEach(k => { snap[k] = recSig(log[k]); }); }
+function stampChanged(){
+  const now = Date.now();
+  Object.keys(log).forEach(k => {
+    const sig = recSig(log[k]);
+    if(sig !== snap[k]){ if(log[k]) log[k]._t = now; snap[k] = sig; }
+  });
+}
+function mergeLogs(remote, local){
+  const out = {};
+  new Set([...Object.keys(remote || {}), ...Object.keys(local || {})]).forEach(k => {
+    const a = remote ? remote[k] : null, b = local ? local[k] : null;
+    if(!a || !b){ out[k] = b || a; return; }
+    const ea = isEmptyDay(a), eb = isEmptyDay(b);
+    if(ea !== eb){ out[k] = ea ? b : a; return; }
+    out[k] = (a._t || 0) > (b._t || 0) ? a : b;            // 같으면(둘 다 시각 없음 포함) 이 기기 것
+  });
+  return out;
+}
+
 function scheduleSave(){
   setSync("저장 중");
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    stampChanged();
     const { okLocal, okRemote } = await store.save(log);
     if(sb && user){ setSync("클라우드 저장됨"); push(); }
     else if(okLocal && okRemote) setSync("저장됨 (이중)");
@@ -1525,6 +1551,7 @@ function renderToday(){
   saveBtn.onclick = async () => {
     clearTimeout(saveTimer);
     saveBtn.textContent = "저장 중";
+    stampChanged();
     const { okLocal, okRemote } = await store.save(log);
     if(sb && user) push();
     const ok = okLocal || okRemote;
@@ -2678,7 +2705,7 @@ function updateAuth(){
 async function pull(){
   setSync("불러오는 중");
   const { data, error } = await sb.from("dawnsix_logs").select("data").eq("user_id", user.id).maybeSingle();
-  if(!error && data?.data){ log = { ...data.data, ...log }; store.save(log); render(); }
+  if(!error && data?.data){ log = mergeLogs(data.data, log); store.save(log); resetSnap(); render(); }
   setSync(error ? "동기화 실패 (로컬 저장됨)" : "클라우드 저장됨");
   if(!error) push();
 }
@@ -2790,6 +2817,7 @@ function showAuthLanding(){
 (async () => {
   const loaded = await store.load();
   if(loaded) log = loaded;
+  resetSnap();
   seedInbody();
   seedLabs();
   seedOff();
@@ -2801,6 +2829,8 @@ function showAuthLanding(){
   showAuthLanding();
 })();
 render();
+// 다른 기기에서 입력한 걸 바로 보이게 — 앱이 다시 화면에 올라올 때마다 클라우드를 다시 받아 합친다
+document.addEventListener("visibilitychange", () => { if(!document.hidden && sb && user) pull(); });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
