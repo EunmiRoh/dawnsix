@@ -283,9 +283,9 @@
       <label>이메일</label>
       <input id="email" type="email" placeholder="you@example.com" style="width:100%">
       <button id="login" class="primary" style="width:100%;margin-top:12px">로그인 메일 받기</button>
-      <label style="margin-top:14px;display:block">메일로 온 인증 코드</label>
-      <input id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="숫자 6자리" style="width:100%">
-      <button id="otpgo" class="primary" style="width:100%;margin-top:12px">코드로 로그인</button>
+      <label style="margin-top:14px;display:block">메일 속 로그인 링크 (또는 숫자 코드)</label>
+      <input id="otp" autocomplete="one-time-code" placeholder="링크를 길게 눌러 복사 → 여기에 붙여넣기" style="width:100%">
+      <button id="otpgo" class="primary" style="width:100%;margin-top:12px">붙여넣은 링크로 로그인</button>
       <p class="muted" id="authmsg" style="margin:10px 0 0"></p>
     </div>
 
@@ -2359,7 +2359,7 @@ function updateAuth(){
   const msg = document.getElementById("authmsg");
   if(!sb){ setSync("로컬 저장"); msg.textContent = "URL과 key를 넣고 연결하세요."; return; }
   if(user){ setSync("클라우드 저장됨"); msg.textContent = `${user.email} 로그인됨`; }
-  else { setSync("연결됨 · 로그인 필요"); msg.textContent = authNotice || "로그인 메일을 받아 메일 속 숫자 코드를 입력하세요."; }
+  else { setSync("연결됨 · 로그인 필요"); msg.textContent = authNotice || "로그인 메일을 받은 뒤, 메일 속 링크를 복사해 아래 칸에 붙여넣으세요."; }
   msg.style.color = (!user && authNotice) ? "var(--rose)" : "";
 }
 async function pull(){
@@ -2398,7 +2398,7 @@ document.getElementById("login").onclick = async () => {
   const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin + location.pathname } });
   if(error){ btn.disabled = false; msg0.textContent = "오류: " + error.message; return; }
   cfg = { ...cfg, email }; localStorage.setItem(CKEY, JSON.stringify(cfg));
-  msg0.textContent = "메일함을 확인하세요. 메일의 숫자 코드를 아래 칸에 넣고 '코드로 로그인'을 누르세요. (링크는 미리보기만 해도 사용 처리돼 실패할 수 있습니다)";
+  msg0.textContent = "메일함을 확인하세요. 메일의 링크는 누르지 말고 길게 눌러 '링크 복사' → 아래 칸에 붙여넣고 '붙여넣은 링크로 로그인'을 누르세요.";
   let left = 60;
   const tick = () => {
     if(left <= 0){ btn.disabled = false; btn.textContent = "로그인 링크 다시 받기"; return; }
@@ -2413,14 +2413,21 @@ document.getElementById("otpgo").onclick = async () => {
   const msg = document.getElementById("authmsg");
   if(!sb){ msg.textContent = "먼저 위에서 URL과 key를 저장하고 연결하세요."; return; }
   const email = document.getElementById("email").value.trim() || cfg.email || "";
-  const code = document.getElementById("otp").value.replace(/\D/g, "");
-  if(!email){ msg.textContent = "이메일을 입력하세요."; return; }
-  if(code.length < 6){ msg.textContent = "메일에 온 숫자 코드를 입력하세요."; return; }
+  const raw = document.getElementById("otp").value.trim();
+  // 붙여넣은 메일 링크(…/auth/v1/verify?token=…&type=magiclink)면 토큰을 꺼내 앱 안에서 바로 확인한다.
+  // 링크를 브라우저로 열지 않으니 다른 브라우저·인앱 브라우저로 새는 문제가 없다.
+  let th = null, ty = "email";
+  try { const u = new URL(raw); th = u.searchParams.get("token"); ty = u.searchParams.get("type") || "email"; } catch(e){}
+  const code = th ? "" : raw.replace(/\D/g, "");
+  if(!th && !email){ msg.textContent = "이메일을 입력하세요."; return; }
+  if(!th && code.length < 6){ msg.textContent = "메일 속 로그인 링크를 길게 눌러 복사한 뒤 붙여넣으세요."; return; }
   const btn = document.getElementById("otpgo");
   btn.disabled = true; msg.textContent = "확인 중…";
-  const { error } = await sb.auth.verifyOtp({ email, token: code, type: "email" });
+  const { error } = th
+    ? await sb.auth.verifyOtp({ token_hash: th, type: ty })
+    : await sb.auth.verifyOtp({ email, token: code, type: "email" });
   btn.disabled = false;
-  if(error){ msg.style.color = "var(--rose)"; msg.textContent = "코드가 맞지 않거나 만료됐습니다. 가장 최근 메일의 코드인지 확인하세요. (" + error.message + ")"; return; }
+  if(error){ msg.style.color = "var(--rose)"; msg.textContent = "링크(코드)가 만료됐거나 이미 사용됐습니다. 메일의 링크를 누르지 말고, 가장 최근 메일의 링크를 복사해 붙여넣으세요. (" + error.message + ")"; return; }
   authNotice = null; msg.style.color = "";
   document.getElementById("otp").value = "";
 };
@@ -2439,7 +2446,7 @@ function showAuthLanding(){
   const msg = document.getElementById("authmsg");
   let t = null;
   if(authLanding.error)
-    t = "로그인 링크가 만료됐거나 이미 사용됐습니다 (메일·메신저 미리보기가 먼저 열면 이렇게 됩니다). 메일 속 숫자 코드를 아래 칸에 넣어 로그인하세요.";
+    t = "로그인 링크가 만료됐거나 이미 사용됐습니다 (메일·메신저 미리보기가 먼저 열면 이렇게 됩니다). 메일을 다시 받아, 링크를 누르지 말고 복사해서 아래 칸에 붙여넣으세요.";
   else if(!cfg.url || !cfg.key)
     t = "로그인 링크가 기록이 없는 브라우저에서 열렸습니다. 기록이 있는 브라우저(예: Safari)에서 링크를 다시 열어주세요. 링크를 길게 눌러 복사 → 그 브라우저 주소창에 붙여넣으면 됩니다.";
   if(!t) return;
