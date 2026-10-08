@@ -1684,9 +1684,23 @@ function renderTrend(){
 
 // 기록 목록 — 주사 요일 기준 주 단위로 묶고, 최신 주만 펼친다
 const histOpen = new Set();
-const HC = { good:"background:var(--tint);color:var(--sage)", bad:"background:var(--rosetint);color:var(--rose)",
-             warn:"background:#FBF0E4;color:#B9772E", info:"background:var(--tint);color:var(--dawn)" };
-const chip = (t, tone) => `<span class="hc" style="${tone ? HC[tone] : ""}">${t}</span>`;
+// 항목마다 고유 색. 꽉 찬 칩 = 목표 달성, 점선 칩 = 아쉬운 날
+const HC = {
+  gym:   { fg:"#2E8B57", bg:"#E3F4EA" },   // 운동 — 초록
+  prot:  { fg:"#B8680F", bg:"#FCEFD9" },   // 단백질 — 주황
+  stool: { fg:"#1E8585", bg:"#DDF2F1" },   // 배변 — 청록
+  shot:  { fg:"#4B5CE8", bg:"#E9ECFB" },   // 주사 — 남색
+  ib:    { fg:"#7B4FC9", bg:"#EFE7FB" },   // 인바디 — 보라
+  cycle: { fg:"#C65F8C", bg:"#F9EDF2" }    // 생리 — 분홍
+};
+const chip = (t, cat, state) => {
+  const c = HC[cat];
+  if(!c) return `<span class="hc">${t}</span>`;
+  const st = state === "full" ? `background:${c.fg};color:#fff`
+           : state === "weak" ? `background:transparent;color:${c.fg};border:1px dashed ${c.fg};padding:0 7px`
+           : `background:${c.bg};color:${c.fg}`;
+  return `<span class="hc" style="${st}">${t}</span>`;
+};
 
 function renderHistory(days, todayKey){
   const el = document.getElementById("history");
@@ -1708,27 +1722,26 @@ function renderHistory(days, todayKey){
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
     const c = [];
     const sl = sessionLabel(r);
-    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "good"));
-    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "good"));
-    if(r.yoga?.done) c.push(chip("요가", "good"));
-    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "good"));
+    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "gym"));
+    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "gym"));
+    if(r.yoga?.done) c.push(chip("요가", "gym"));
+    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "gym"));
     const p = proteinOf(r);
     if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
-    else c.push(chip(`단백질 ${p}g`, p >= GOAL ? "good" : p < 60 ? "bad" : null));
+    else c.push(chip(`단백질 ${p}g`, "prot", p >= GOAL ? "full" : p < 60 ? "weak" : null));
     if(r.stool?.type){
       const t = r.stool.type;
-      c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""),
-        t==="normal" ? "good" : t==="hard" ? "warn" : t==="loose" ? "bad" : null));
+      c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""), "stool", t==="normal" ? null : "weak"));
     }
-    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "info"));
-    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "info"));
-    if(r.cycle?.start) c.push(chip("생리 시작", "bad"));
-    if(r.cycle?.end) c.push(chip("생리 종료", "bad"));
+    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "shot"));
+    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "ib"));
+    if(r.cycle?.start) c.push(chip("생리 시작", "cycle"));
+    if(r.cycle?.end) c.push(chip("생리 종료", "cycle"));
     if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px">체중 ${r.bodyWeight}</span>`);
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
 
-  el.innerHTML = weeks.map(w => {
+  el.innerHTML = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>` + weeks.map(w => {
     const end = addDays(w.start, 6);
     const si = shotInfo(w.days[0]);
     const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
@@ -1741,9 +1754,9 @@ function renderHistory(days, todayKey){
     const stOK = st.filter(k => log[k].stool.type === "normal").length;
     const ws = w.days.filter(k => log[k]?.bodyWeight).slice().reverse();
     const s = [];
-    if(avgP !== null) s.push(`단백질 평균 <b style="color:${avgP>=GOAL?"var(--sage)":avgP<60?"var(--rose)":"var(--mist)"}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
-    s.push(`운동 ${gymN}회`);
-    if(st.length) s.push(`배변 정상 ${stOK}/${st.length}`);
+    if(avgP !== null) s.push(`단백질 평균 <b style="color:${HC.prot.fg}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
+    s.push(`운동 <b style="color:${HC.gym.fg}">${gymN}회</b>`);
+    if(st.length) s.push(`배변 정상 <b style="color:${HC.stool.fg}">${stOK}/${st.length}</b>`);
     if(ws.length > 1) s.push(`체중 ${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}`);
     else if(ws.length) s.push(`체중 ${log[ws[0]].bodyWeight}`);
     const open = histOpen.has(w.start);
