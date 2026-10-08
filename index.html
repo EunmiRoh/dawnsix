@@ -1686,17 +1686,17 @@ function renderTrend(){
 const histOpen = new Set();
 // 항목마다 고유 색. 꽉 찬 칩 = 목표 달성, 점선 칩 = 아쉬운 날
 const HC = {
-  gym:   { fg:"#2E8B57", bg:"#E3F4EA" },   // 운동 — 초록
-  prot:  { fg:"#B8680F", bg:"#FCEFD9" },   // 단백질 — 주황
-  stool: { fg:"#1E8585", bg:"#DDF2F1" },   // 배변 — 청록
-  shot:  { fg:"#4B5CE8", bg:"#E9ECFB" },   // 주사 — 남색
-  ib:    { fg:"#7B4FC9", bg:"#EFE7FB" },   // 인바디 — 보라
-  cycle: { fg:"#C65F8C", bg:"#F9EDF2" }    // 생리 — 분홍
+  gym:   { fg:"#1E9E63", bg:"#E3F8EE", solid:"#2BBF7A" },   // 운동 — 민트 초록
+  prot:  { fg:"#E8603C", bg:"#FFEEE8", solid:"#FF7A59" },   // 단백질 — 코랄
+  stool: { fg:"#1593C7", bg:"#E2F5FD", solid:"#2BADE3" },   // 배변 — 하늘
+  shot:  { fg:"#4F5FE8", bg:"#ECEEFE", solid:"#5B6CF0" },   // 주사 — 남색
+  ib:    { fg:"#8B4FE8", bg:"#F3ECFE", solid:"#9B5CF6" },   // 인바디 — 보라
+  cycle: { fg:"#DB4A8B", bg:"#FDECF4", solid:"#EC5F9E" }    // 생리 — 분홍
 };
 const chip = (t, cat, state) => {
   const c = HC[cat];
   if(!c) return `<span class="hc">${t}</span>`;
-  const st = state === "full" ? `background:${c.fg};color:#fff`
+  const st = state === "full" ? `background:${c.solid};color:#fff;font-weight:600`
            : state === "weak" ? `background:transparent;color:${c.fg};border:1px dashed ${c.fg};padding:0 7px`
            : `background:${c.bg};color:${c.fg}`;
   return `<span class="hc" style="${st}">${t}</span>`;
