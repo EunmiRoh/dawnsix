@@ -185,6 +185,8 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 - **10/8 확인한 실패 원인:** ① 무료 플랜이라 7일 무요청 시 프로젝트가 **자동 일시정지** → 그동안 모든 연결 실패 (10/8 MCP로 restore). ② 로그인 버튼을 두 번 눌러 메일 2통 → 앞 링크 무효. ③ 메일 링크가 **Chrome**으로 열려 Safari(기록 있는 쪽)와 저장소가 달라 로그인 실패.
 - 대응: 로그인 버튼 전송 중·후 60초 잠금, 링크가 설정 없는 브라우저에서 열리거나 만료되면 설정 탭에 안내(`showAuthLanding`, `authNotice`). 부팅 시 `connect()`는 `store.load()` 이후에 실행 (먼저 하면 로컬 로드가 클라우드 병합 결과를 덮음).
 - 키는 legacy anon(eyJ…)·publishable(sb_publishable_…) 둘 다 유효.
+- **링크 로그인은 불안정:** 1회용 토큰이라 메일·메신저·채팅앱의 **링크 미리보기**가 먼저 열면 소진된다 (10/8 13:17 실제 발생 — verify 성공 로그는 있는데 앱의 `/auth/v1/user` 요청이 없었음). → **이메일 OTP 코드 로그인** 추가 (`#otp`, `#otpgo`, `sb.auth.verifyOtp({email, token, type:"email"})`). 이메일은 `cfg.email`에 저장해 다음에 자동 채움.
+- **코드가 메일에 나오려면** Supabase 대시보드 › Authentication › Emails › **Magic Link** 템플릿에 `{{ .Token }}`이 있어야 한다 (기본 템플릿엔 링크만 있음). MCP로는 템플릿 수정 불가 → 사용자가 대시보드에서 변경.
 
 ---
 
