@@ -128,7 +128,9 @@ function seedInbody(){
 
 - **폰 화면은 그대로**. 가로 **1000px 이상**에서만 바뀐다 (`@media (min-width:1000px)`).
 - 추이 탭은 두 단: 왼쪽 `.tmain`(누적 · 한눈에 보기 · 기록) / 오른쪽 `.tside`(생리 · 인바디 · 피검사 · 마운자로). 폰에선 `.tcol{display:contents}` + 각 `.tblk`의 `order`로 원래 순서(누적→한눈에→생리→인바디→피검사→마운자로→기록) 유지 — 블록을 추가하면 order도 같이 줄 것.
-- 폭: 추이 탭 1180px(`body[data-tab="trend"]`, `goTab()`이 `body.dataset.tab` 설정), 나머지 탭 720px. 상단 탭 메뉴는 가운데 모음. 1600px 이상은 `body{zoom:1.15}`.
+- 폭: 추이·오늘·기구·설정 1180px, 코치·집 720px(운동 중 보는 화면이라 한 단). `goTab()`이 `body.dataset.tab` 설정. 상단 탭 메뉴는 가운데 모음. 1600px 이상은 `body{zoom:1.15}`.
+- 오늘 탭: `#today{columns:2}` 다단 — 왼쪽에 운동, 오른쪽에 체중·배변·생리·마운자로·단백질이 자연스럽게 나뉜다. 카드는 `break-inside:avoid`.
+- 기구 탭: 사진이 커서 `columns:3`. 설정 탭: grid — 왼쪽 동기화·백업 / 오른쪽 로그인(`#authcard`). 섹션에 display를 줄 땐 `:not(.hide)`로 (`.hide`의 display:none을 덮으면 탭이 겹쳐 보임).
 
 ### 항목별 색 (`HC`)
 
