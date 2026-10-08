@@ -249,6 +249,8 @@
     <h2>아침 공복 체중 (kg)</h2>
     <div id="tnav" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"></div>
     <div class="card" id="wchart"></div>
+    <h2>운동</h2>
+    <div class="card" id="gchart"></div>
     <h2>일별 단백질 (g)</h2>
     <div class="card" id="pchart"></div>
     <h2>배변</h2>
@@ -1553,6 +1555,37 @@ function renderTrend(){
     ...cycleStarts().map(k => ({ k, color:HC.cycle.solid, label:"생리" })),
     ...shotDays().map(k => ({ k, color:HC.shot.solid, label:"주사" }))
   ]));
+  // 운동 — 같은 x축. 막대 높이 = 세트 완료율, 대체(집운동)는 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 휴무
+  const gcell = k => {
+    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
+    const ratio = isGymDay(dow) ? ratioOf(r, kind) : 0;
+    const done = isGymDay(dow) ? gymOK(r) : !!(r?.backup || sessionCount(r));
+    const home = !!r?.backup && !(isGymDay(dow) && ratio >= .5);
+    let box;
+    if(kind === "rest" && !done) box = `<div style="height:44px;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--dim)">휴</div>`;
+    else if(home) box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:26px;border-radius:6px;background:${HC.gym.bg};border:1.5px dashed ${HC.gym.fg}"></div></div>`;
+    else if(done){
+      const h = Math.round(16 + 28 * Math.max(ratio, r?.arrived || sessionCount(r) ? .5 : 0));
+      box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:${h}px;border-radius:6px;background:${HC.gym.solid}"></div></div>`;
+    }
+    else box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:26px;border-radius:6px;border:1.5px dashed ${HC.gym.fg};opacity:.55"></div></div>`;
+    const yoga = r?.yoga?.done ? "요가" : "";
+    return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">${box}
+      <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
+      <div style="font-size:9px;color:${yoga ? HC.gym.fg : "transparent"}">${yoga || "-"}</div></div>`;
+  };
+  const wk7 = view.filter(k => k > addDays(keyOf(new Date()), -7));
+  const gym7 = wk7.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && (log[k]?.backup || sessionCount(log[k]))); }).length;
+  document.getElementById("gchart").innerHTML = view.length
+    ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(view.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + view.map(gcell).join("") + `</div></div>
+      <div class="muted" style="font-size:11px;margin-top:10px">
+        <span style="white-space:nowrap"><span style="color:${HC.gym.solid}">■</span> 헬스 (높을수록 세트 많이)</span> &nbsp;
+        <span style="white-space:nowrap"><span style="color:${HC.gym.fg}">▣</span> 집운동·대체</span> &nbsp;
+        <span style="white-space:nowrap"><span style="color:${HC.gym.fg}">□</span> 못 한 날</span> &nbsp;
+        <span style="white-space:nowrap">휴 = 월요일 휴관</span></div>
+      <div class="muted" style="font-size:12px;margin-top:8px">최근 7일 운동 <b style="color:${HC.gym.fg}">${gym7}회</b></div>`
+    : `<div class="muted" style="font-size:13px">운동을 기록하면 여기에 표시됩니다.</div>`;
+
   document.getElementById("pchart").innerHTML =
     wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)}))));
 
