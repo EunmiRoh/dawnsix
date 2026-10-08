@@ -1357,11 +1357,27 @@ function lineChart(points, unit, marks){
   const H=CH.h, P=CH.pad;
   const slots = (points.slots || points.length);
   const W = chartW(slots);
-  const vals = points.map(p=>p.v), mn = Math.min(...vals)-.6, mx = Math.max(...vals)+.6, span = (mx-mn)||1;
+  // 세로 범위를 최소 4kg로 잡아 하루 0.몇 kg 변동이 급경사로 보이지 않게 한다
+  const vals = points.map(p=>p.v), lo = Math.min(...vals), hi = Math.max(...vals);
+  const half = Math.max((hi-lo)/2 + .6, 2), mid = (hi+lo)/2;
+  const mn = mid-half, mx = mid+half, span = mx-mn;
   const pts = points.map((p,i)=>({
     x: P + ((p.i === undefined ? i : p.i))*CH.day + CH.day/2,
     y: H-26 - ((p.v-mn)/span)*(H-50), ...p }));
-  const path = pts.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  // 단조 3차 보간(Fritsch–Carlson) — 점 사이를 부드럽게 잇되 실제 값보다 튀어나가지 않는다
+  const n = pts.length, dx = [], m = [], t = [];
+  for(let i=0;i<n-1;i++){ dx[i] = pts[i+1].x-pts[i].x; m[i] = (pts[i+1].y-pts[i].y)/dx[i]; }
+  for(let i=0;i<n;i++){
+    if(i===0) t[i] = n>1 ? m[0] : 0;
+    else if(i===n-1) t[i] = m[n-2];
+    else t[i] = (m[i-1]*m[i] <= 0) ? 0 : 3*(dx[i-1]+dx[i]) / ((2*dx[i]+dx[i-1])/m[i-1] + (dx[i]+2*dx[i-1])/m[i]);
+  }
+  const f = v => v.toFixed(1);
+  let path = `M${f(pts[0].x)},${f(pts[0].y)}`;
+  for(let i=0;i<n-1;i++){
+    const a = pts[i], b = pts[i+1], h = dx[i]/3;
+    path += ` C${f(a.x+h)},${f(a.y+t[i]*h)} ${f(b.x-h)},${f(b.y-t[i+1]*h)} ${f(b.x)},${f(b.y)}`;
+  }
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
     <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
     <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
@@ -1372,7 +1388,7 @@ function lineChart(points, unit, marks){
       return `<line x1="${p.x}" y1="18" x2="${p.x}" y2="${H-26}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3"/>
         <text x="${p.x}" y="14" font-size="8" fill="${col}" text-anchor="middle">${lb}</text>`;
     }).join("")}
-    <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2"/>
+    <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--dawn)"/>
       <text x="${p.x}" y="${p.y-8}" font-size="9" fill="var(--mist)" text-anchor="middle">${p.v.toFixed(1)}</text>
       <text x="${p.x}" y="${H-12}" font-size="9" fill="var(--dim)" text-anchor="middle">${p.lab}</text>`).join("")}
