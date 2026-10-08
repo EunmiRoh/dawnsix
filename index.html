@@ -64,6 +64,15 @@
   nav button{flex:1;border:none;border-radius:0;background:none;color:var(--dim);height:52px;font-size:13px;padding:0}
   nav button.on{color:var(--dawn);font-weight:700;box-shadow:inset 0 -2px 0 var(--dawn)}
   .hide{display:none}
+  .wk{padding:0;overflow:hidden}
+  .wkh{display:block;width:100%;text-align:left;border:none;border-radius:0;background:none;padding:12px 14px}
+  .wkh .t{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .wkh .s{font-size:12px;color:var(--dim);margin-top:2px}
+  .wkd{border-top:1px solid var(--line)}
+  .hday{display:flex;gap:10px;padding:9px 14px;border-top:1px solid var(--line)}
+  .hday:first-child{border-top:none}
+  .hday>b{flex:0 0 66px;font-size:13px}
+  .hc{display:inline-block;font-size:11px;line-height:1.5;padding:1px 8px;border-radius:999px;margin:2px 4px 2px 0;background:var(--panel2);color:var(--dim);white-space:nowrap}
   .sync{font-size:11px}
   h2{font-size:12px;letter-spacing:.14em;color:var(--dim);margin:28px 0 10px;font-weight:600}
   .warn{border:1px solid var(--rose);background:var(--rosetint);color:var(--rose);border-radius:12px;padding:13px 15px;font-size:13px;margin-top:14px}
@@ -1670,25 +1679,86 @@ function renderTrend(){
     mc.innerHTML = html;
   }
 
-  document.getElementById("history").innerHTML = days.slice().reverse().slice(0,30).map(k=>{
-    const r = log[k], kind = kindOf(parseKey(k).getDay());
-    const bits = [];
-    if(r.bodyWeight) bits.push(`체중 ${r.bodyWeight}`);
+  renderHistory(days, todayKey);
+}
+
+// 기록 목록 — 주사 요일 기준 주 단위로 묶고, 최신 주만 펼친다
+const histOpen = new Set();
+const HC = { good:"background:var(--tint);color:var(--sage)", bad:"background:var(--rosetint);color:var(--rose)",
+             warn:"background:#FBF0E4;color:#B9772E", info:"background:var(--tint);color:var(--dawn)" };
+const chip = (t, tone) => `<span class="hc" style="${tone ? HC[tone] : ""}">${t}</span>`;
+
+function renderHistory(days, todayKey){
+  const el = document.getElementById("history");
+  if(!days.length){ el.innerHTML = `<div class="muted" style="font-size:13px">아직 기록이 없습니다.</div>`; return; }
+  const weekOf = k => addDays(k, -((parseKey(k).getDay() - shotDow() + 7) % 7));
+  const weeks = [];
+  days.slice().reverse().forEach(k => {
+    const w = weekOf(k);
+    if(!weeks.length || weeks[weeks.length-1].start !== w) weeks.push({ start:w, days:[] });
+    weeks[weeks.length-1].days.push(k);
+  });
+  if(!el.dataset.init){                                       // 이번 주가 막 시작했으면 지난주도 같이 펼친다
+    histOpen.add(weeks[0].start);
+    if(weeks[0].days.length < 3 && weeks[1]) histOpen.add(weeks[1].start);
+    el.dataset.init = "1";
+  }
+
+  const dayRow = k => {
+    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
+    const c = [];
     const sl = sessionLabel(r);
-    if(isGymDay(parseKey(k).getDay())) bits.push(gymOK(r) ? ((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : " O")) : "헬스 —");
-    else if(sl) bits.push("헬스 " + sl);
-    if(r.yoga?.done) bits.push("요가 O");
-    if(r.backup) bits.push(isGymDay(parseKey(k).getDay()) ? "대체" : "집운동");
-    bits.push(`단백질 ${proteinOf(r)}g`);
-    if(r.stool?.type) bits.push("배변 " + STOOL_LABEL[r.stool.type] + (r.stool.amount==="small" ? "·적음" : ""));
-    if(r.shot?.done) bits.push(`주사 ${r.shot.dose}mg`);
-    if(r.inbody) bits.push(`인바디 근육 ${r.inbody.smm}`);
-    if(r.cycle?.start) bits.push("생리 시작");
-    if(r.cycle?.end) bits.push("생리 종료");
-    return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
-      <div class="row"><b style="font-size:14px">${lab(k)} (${DAY[parseKey(k).getDay()]})</b>
-      <span class="muted" style="font-size:12px">${bits.join(" · ")}</span></div></div>`;
-  }).join("") || `<div class="muted" style="font-size:13px">아직 기록이 없습니다.</div>`;
+    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "good"));
+    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "good"));
+    if(r.yoga?.done) c.push(chip("요가", "good"));
+    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "good"));
+    const p = proteinOf(r);
+    if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
+    else c.push(chip(`단백질 ${p}g`, p >= GOAL ? "good" : p < 60 ? "bad" : null));
+    if(r.stool?.type){
+      const t = r.stool.type;
+      c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""),
+        t==="normal" ? "good" : t==="hard" ? "warn" : t==="loose" ? "bad" : null));
+    }
+    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "info"));
+    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "info"));
+    if(r.cycle?.start) c.push(chip("생리 시작", "bad"));
+    if(r.cycle?.end) c.push(chip("생리 종료", "bad"));
+    if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px">체중 ${r.bodyWeight}</span>`);
+    return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
+  };
+
+  el.innerHTML = weeks.map(w => {
+    const end = addDays(w.start, 6);
+    const si = shotInfo(w.days[0]);
+    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
+    const done = w.days.filter(k => k !== todayKey);            // 진행 중인 오늘은 평균에서 뺀다
+    const ps = done.map(k => proteinOf(log[k]));
+    const avgP = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
+    const hit = ps.filter(p => p >= GOAL).length;
+    const gymN = w.days.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
+    const st = w.days.filter(k => log[k]?.stool?.type);
+    const stOK = st.filter(k => log[k].stool.type === "normal").length;
+    const ws = w.days.filter(k => log[k]?.bodyWeight).slice().reverse();
+    const s = [];
+    if(avgP !== null) s.push(`단백질 평균 <b style="color:${avgP>=GOAL?"var(--sage)":avgP<60?"var(--rose)":"var(--mist)"}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
+    s.push(`운동 ${gymN}회`);
+    if(st.length) s.push(`배변 정상 ${stOK}/${st.length}`);
+    if(ws.length > 1) s.push(`체중 ${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}`);
+    else if(ws.length) s.push(`체중 ${log[ws[0]].bodyWeight}`);
+    const open = histOpen.has(w.start);
+    return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
+        <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
+        <span style="color:var(--dim);font-size:16px">${open ? "▾" : "▸"}</span></div>
+        <div class="s">${s.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ")}</div></button>
+      ${open ? `<div class="wkd">${w.days.map(dayRow).join("")}</div>` : ""}</div>`;
+  }).join("");
+
+  el.querySelectorAll(".wkh").forEach(b => b.onclick = () => {
+    const k = b.dataset.wk;
+    histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
+    renderHistory(days, todayKey);
+  });
 }
 
 function render(){
