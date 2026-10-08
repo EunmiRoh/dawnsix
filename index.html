@@ -590,14 +590,22 @@ function doseBlockStats(key){
   for(let i = all.length-1; i >= 0; i--){
     if(log[all[i]]?.shot?.dose === si.dose) from = all[i]; else break;
   }
-  const days = Object.keys(log).filter(k => k >= from && k <= key).sort();
-  const prot = days.map(k => proteinOf(log[k])).filter(g => g > 0);
+  return { dose: si.dose, from, nth: si.nth, ...rangeStats(from, key) };
+}
+
+// 기간 [from, to] 요약 — 입력 중인 오늘(단백질 목표 미달)은 단백질 통계에서 뺀다
+function rangeStats(from, to){
+  const todayKey = keyOf(new Date());
+  const days = Object.keys(log).filter(k => k >= from && k <= to && !isEmptyDay(log[k], false)).sort();
+  const pdays = days.filter(k => !(k === todayKey && proteinOf(log[k]) < GOAL));
+  const prot = pdays.map(k => proteinOf(log[k])).filter(g => g > 0);
   const avg = prot.length ? Math.round(prot.reduce((a,b)=>a+b,0)/prot.length) : null;
   const low = prot.filter(g => g < 60).length;
   const noStool = days.filter(k => log[k]?.stool?.type === "none").length;
   const ws = days.map(k => parseFloat(log[k]?.bodyWeight)).filter(v => !isNaN(v));
-  const drop = ws.length >= 2 ? (ws[0] - ws[ws.length-1]).toFixed(1) : null;
-  return { dose: si.dose, from, nth: si.nth, avg, low, noStool, drop, days: days.length };
+  const chg = ws.length >= 2 ? ws[ws.length-1] - ws[0] : null;
+  const drop = chg === null ? null : (chg > 0 ? "+" : "") + chg.toFixed(1);   // 부호 붙은 변화량
+  return { avg, low, noStool, drop, days: days.length };
 }
 
 // 주사 후 며칠차별 평균 단백질
@@ -785,6 +793,9 @@ function mutate(fn){ const r = rec(); fn(r); persist(); render(); }
 /* ─────────── 중량 자동 산정 ─────────── */
 const BASE = { leg:25, lat:15, chest:10, curl:10, ext:15 };   // 1주차 기본값
 const STEP = 5;                                        // 핀 한 칸
+// 복귀 후 무게 유지 기간 — 손 열상(9/19) 회복. 이 기간엔 아래 종목은 올리지 않는다 (내리는 건 허용)
+const HOLD = { until:"2026-10-20", ids:["lat","chest","curl","ext"] };
+const onHold = (exId, key) => HOLD.ids.includes(exId) && key <= HOLD.until;
 const DIFFS = [["easy","쉬웠다"],["ok","딱 맞다"],["hard","힘들었다"]];
 
 function pastSessions(exId, beforeKey){
@@ -796,6 +807,10 @@ function pastSessions(exId, beforeKey){
 function recommend(exId, key){
   const hist = pastSessions(exId, key);
   if(!hist.length) return BASE[exId];
+  const w = recommendRaw(exId, key, hist);
+  return onHold(exId, key) ? Math.min(w, hist[0].w) : w;
+}
+function recommendRaw(exId, key, hist){
   const last = hist[0];
   if(last.d === "easy") return last.w + STEP;
   if(last.d === "hard") return Math.max(last.w - STEP, 5);
@@ -809,7 +824,7 @@ function nextHint(exId, key){
   const w = parseFloat(r?.weights?.[exId]);
   const d = r?.diff?.[exId];
   if(isNaN(w) || !d) return "";
-  if(d === "easy") return `다음 시간 ${w + STEP}kg`;
+  if(d === "easy") return onHold(exId, addDays(key, 1)) ? `다음 시간 ${w}kg 유지 (손 회복 기간 ~${fmtKey(HOLD.until)})` : `다음 시간 ${w + STEP}kg`;
   if(d === "hard") return `다음 시간 ${Math.max(w - STEP, 5)}kg`;
   return `다음 시간 ${w}kg 유지`;
 }
@@ -912,7 +927,7 @@ function renderToday(){
       const c = document.createElement("div"); c.className = "card"; c.style.marginTop = "12px";
       c.innerHTML = `<div class="row"><div><span style="color:var(--dawn);font-size:12px">${i+1}</span>
         <b style="margin-left:8px">${cur.name}</b></div>
-        <span class="muted" style="font-size:12px">권장 ${recommend(cur.id, dateKey)}kg</span></div>
+        <span class="muted" style="font-size:12px">권장 ${recommend(cur.id, dateKey)}kg${onHold(cur.id, dateKey) ? ` · ${fmtKey(HOLD.until)}까지 유지` : ""}</span></div>
         <div class="muted" style="font-size:12px;margin-top:2px">${cur.cue}</div>`;
       if(e.alt){
         const sw = document.createElement("button");
@@ -1412,7 +1427,7 @@ function barChart(points){
 }
 
 let trendScroll = null;      // 추이 그래프 가로 스크롤 위치 (null이면 최신으로)
-let wBase = null;            // 누적 카드 기준일 (null이면 첫 기록)
+let wBase = null;            // 누적 카드 기준일 (null이면 최근 기록 1주 전)
 
 function renderTrend(){
   const todayKey = keyOf(new Date());
@@ -1441,9 +1456,12 @@ function renderTrend(){
   const cmp = document.getElementById("wcompare");
   if(weights.length){
     const l = weights[weights.length-1];
-    // 기준일이 사라졌거나 최근과 같으면 첫 기록으로
+    // 기본 기준일 = 최근 기록 7일 전 (그날 기록이 없으면 그 이전 가장 가까운 날, 없으면 첫 기록)
+    const wkAgo = addDays(l.k, -7);
+    const defBase = weights.slice(0,-1).reverse().find(x => x.k <= wkAgo) || weights[0];
+    // 기준일이 사라졌거나 최근과 같으면 기본값으로
     if(wBase && (wBase === l.k || !weights.some(x=>x.k===wBase))) wBase = null;
-    const f = wBase ? weights.find(x=>x.k===wBase) : weights[0];
+    const f = wBase ? weights.find(x=>x.k===wBase) : defBase;
     const diff = (weights.length>1 && f.k !== l.k) ? l.v-f.v : null;
     const gap = f.k !== l.k ? dayDiff(l.k, f.k) : 0;
     cmp.innerHTML = `<div class="row">
@@ -1671,22 +1689,25 @@ function renderTrend(){
     ];
     let html = rows.map(([a,b])=>`<div class="row" style="padding:5px 0">
       <span class="muted" style="font-size:12px">${a}</span><b style="font-size:13px">${b}</b></div>`).join("");
-    const dbs2 = doseBlockStats(keyOf(new Date()));
-    if(dbs2){
-      const bits = [];
-      if(dbs2.avg !== null) bits.push(`평균 단백질 ${dbs2.avg}g`);
-      if(dbs2.low) bits.push(`60g 미만 ${dbs2.low}일`);
-      if(dbs2.noStool) bits.push(`배변 없음 ${dbs2.noStool}일`);
-      if(dbs2.drop !== null) bits.push(`체중 ${dbs2.drop}kg`);
-      html += `<div class="muted" style="font-size:12px;margin-top:10px">${dbs2.dose}mg 구간 (${fmtKey(dbs2.from)}부터 기록 ${dbs2.days}일)</div>
-        <div style="font-size:12px;margin-top:3px">${bits.length ? bits.join(" · ") : "기록이 아직 없습니다"}</div>`;
-    }
-    if(si2.hist.length > 1){
-      html += `<div class="muted" style="font-size:12px;margin-top:10px">용량 이력</div>`
-        + si2.hist.map(h=>`<div class="row" style="padding:3px 0">
-            <span class="muted" style="font-size:12px">${h.dose}mg</span>
-            <span style="font-size:12px">${fmtKey(h.from)}부터 ${h.count}회</span></div>`).join("");
-    }
+    // 용량별 구간 비교 — 최신 용량이 위
+    const todayK = keyOf(new Date());
+    const blocks = si2.hist.map((h, idx) => {
+      const nx = si2.hist[idx+1];
+      const to = nx ? addDays(nx.from, -1) : todayK;
+      return { ...h, to, cur: !nx, ...rangeStats(h.from, to) };
+    }).reverse();
+    html += `<div class="muted" style="font-size:12px;margin-top:12px">용량별 구간</div>`
+      + blocks.map(b => {
+          const bits = [];
+          bits.push(b.avg !== null ? `단백질 평균 <b style="color:${HC.prot.fg}">${b.avg}g</b>` : "단백질 기록 없음");
+          bits.push(`60g 미만 ${b.low}일`);
+          bits.push(`배변 없음 ${b.noStool}일`);
+          if(b.drop !== null) bits.push(`체중 <b>${b.drop}kg</b>`);
+          return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+            <div class="row"><b style="font-size:13px">${b.dose}mg${b.cur ? ` <span class="hc" style="background:${HC.shot.bg};color:${HC.shot.fg}">현재</span>` : ""}</b>
+            <span class="muted" style="font-size:11px">${fmtKey(b.from)}~${b.cur ? "" : fmtKey(b.to)} · 주사 ${b.count}회 · 기록 ${b.days}일</span></div>
+            <div style="font-size:12px;margin-top:2px;color:var(--dim)">${bits.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ")}</div></div>`;
+        }).join("");
     const pbs = proteinByShotDay();
     if(pbs){
       const mx = Math.max(...pbs.map(x=>x.avg||0), GOAL);
