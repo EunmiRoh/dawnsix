@@ -78,6 +78,17 @@
     .tside .tblk:first-child h2{margin-top:14px}
     nav{justify-content:center}
     nav button{flex:0 1 150px;font-size:14px}
+    /* 오늘·기구·설정도 넓게 두 단 (카드를 위→아래로 채우는 다단 배치, 카드는 쪼개지지 않게) */
+    body[data-tab="today"] .wrap, body[data-tab="gear"] .wrap, body[data-tab="setup"] .wrap{max-width:1180px}
+    #today{columns:2;column-gap:28px}
+    #tab-gear{columns:3;column-gap:22px}                     /* 사진이 커서 세 단 */
+    #today > *, #tab-gear > *{break-inside:avoid}
+    #tab-gear > h1, #tab-gear > p{column-span:all}
+    /* 설정: 왼쪽 동기화·백업 / 오른쪽 로그인 (.hide의 display:none을 덮지 않게 :not 사용) */
+    #tab-setup:not(.hide){display:grid;grid-template-columns:1fr 1fr;column-gap:28px;align-items:start}
+    #tab-setup > h1{grid-column:1 / -1}
+    #authcard{grid-column:2;grid-row:2 / span 2}
+    #tab-gear > h2{break-after:avoid}
   }
   @media (min-width:1600px){ body{zoom:1.15} }              /* 큰 모니터에서 글자가 너무 작아 보이지 않게 */
   .clab{font-size:11px;color:var(--dim);margin:8px 0 2px;letter-spacing:.04em}
