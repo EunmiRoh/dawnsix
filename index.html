@@ -1781,33 +1781,79 @@ function renderHistory(days, todayKey){
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
 
-  el.innerHTML = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>` + weeks.map(w => {
-    const end = addDays(w.start, 6);
-    const si = shotInfo(w.days[0]);
-    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
-    const done = w.days.filter(k => k !== todayKey);            // 진행 중인 오늘은 평균에서 뺀다
-    const ps = done.map(k => proteinOf(log[k]));
+  // 기간 요약 — 단백질 0g(기록 안 한 날)과 진행 중인 오늘은 평균에서 뺀다
+  const summary = ks => {
+    const ps = ks.filter(k => k !== todayKey).map(k => proteinOf(log[k])).filter(g => g > 0);
     const avgP = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
     const hit = ps.filter(p => p >= GOAL).length;
-    const gymN = w.days.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
-    const st = w.days.filter(k => log[k]?.stool?.type);
+    const gymN = ks.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
+    const st = ks.filter(k => log[k]?.stool?.type);
     const stOK = st.filter(k => log[k].stool.type === "normal").length;
-    const ws = w.days.filter(k => log[k]?.bodyWeight).slice().reverse();
+    const ws = ks.filter(k => log[k]?.bodyWeight).slice().reverse();
     const s = [];
     if(avgP !== null) s.push(`단백질 평균 <b style="color:${HC.prot.fg}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
     s.push(`운동 <b style="color:${HC.gym.fg}">${gymN}회</b>`);
     if(st.length) s.push(`배변 정상 <b style="color:${HC.stool.fg}">${stOK}/${st.length}</b>`);
     if(ws.length > 1) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}</b>`);
     else if(ws.length) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}</b>`);
+    return s.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ");
+  };
+  const arrow = open => `<span style="color:var(--dim);font-size:16px">${open ? "▾" : "▸"}</span>`;
+
+  const weekCard = w => {
+    const end = addDays(w.start, 6);
+    const si = shotInfo(w.days[0]);
+    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
     const open = histOpen.has(w.start);
     return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
         <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
-        <span style="color:var(--dim);font-size:16px">${open ? "▾" : "▸"}</span></div>
-        <div class="s">${s.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ")}</div></button>
+        ${arrow(open)}</div>
+        <div class="s">${summary(w.days)}</div></button>
       ${open ? `<div class="wkd">${w.days.map(dayRow).join("")}</div>` : ""}</div>`;
-  }).join("");
+  };
 
-  el.querySelectorAll(".wkh").forEach(b => b.onclick = () => {
+  // 최근 한 달은 주 단위로 바로 보이고, 그 이전은 연 → 월로 접어 둔다 (주가 쌓여도 목록이 길어지지 않게)
+  const cutoff = addDays(todayKey, -28);                      // 이번 주 포함 최근 4주
+  const recent = weeks.filter(w => w.start >  cutoff);
+  const older  = weeks.filter(w => w.start <= cutoff);
+  const years = [];
+  older.forEach(w => {
+    const y = w.start.slice(0,4), m = w.start.slice(0,7);
+    if(!years.length || years[years.length-1].y !== y) years.push({ y, months:[] });
+    const ms = years[years.length-1].months;
+    if(!ms.length || ms[ms.length-1].m !== m) ms.push({ m, weeks:[] });
+    ms[ms.length-1].weeks.push(w);
+  });
+  const allDays = ws => ws.flatMap(w => w.days);
+
+  let html = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>`;
+  html += `<div class="muted" style="font-size:12px;margin:0 0 8px">최근 한 달</div>` + recent.map(weekCard).join("");
+  if(years.length){
+    html += `<div class="muted" style="font-size:12px;margin:18px 0 8px">지난 기록</div>`;
+    html += years.map(Y => {
+      const yOpen = histOpen.has("y" + Y.y);
+      const nW = Y.months.reduce((a,M) => a + M.weeks.length, 0);
+      return `<div class="card wk"><button class="wkh grp" data-grp="y${Y.y}">
+          <div class="t"><b style="font-size:15px">${Y.y}년<span class="muted" style="font-size:12px;font-weight:400"> · ${Y.months.length}개월 · ${nW}주</span></b>${arrow(yOpen)}</div>
+        </button>
+        ${yOpen ? `<div class="wkd" style="padding:8px 10px 2px">` + Y.months.map(M => {
+          const mOpen = histOpen.has("m" + M.m);
+          return `<div class="card wk" style="margin-bottom:8px;box-shadow:none"><button class="wkh grp" data-grp="m${M.m}">
+              <div class="t"><b style="font-size:14px">${parseInt(M.m.slice(5))}월<span class="muted" style="font-size:12px;font-weight:400"> · ${M.weeks.length}주</span></b>${arrow(mOpen)}</div>
+              <div class="s">${summary(allDays(M.weeks))}</div></button>
+            ${mOpen ? `<div style="padding:4px 8px 0">${M.weeks.map(weekCard).join("")}</div>` : ""}</div>`;
+        }).join("") + `</div>` : ""}</div>`;
+    }).join("");
+  }
+  el.innerHTML = html;
+
+  el.querySelectorAll(".grp").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    const k = b.dataset.grp;
+    histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
+    renderHistory(days, todayKey);
+  });
+  el.querySelectorAll(".wkh:not(.grp)").forEach(b => b.onclick = () => {
     const k = b.dataset.wk;
     histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
     renderHistory(days, todayKey);
