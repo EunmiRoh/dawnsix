@@ -257,6 +257,8 @@
     <div class="card" id="cchart"></div>
     <h2>인바디</h2>
     <div class="card" id="ibchart"></div>
+    <h2>피검사</h2>
+    <div class="card" id="labchart"></div>
     <h2>마운자로</h2>
     <div class="card" id="mchart"></div>
     <h2>기록</h2>
@@ -459,7 +461,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -473,6 +475,7 @@ const gymOK = r => !!(r && (r.arrived || r.backup || ratioOf(r,"gym") >= .5));
 function isEmptyDay(r, countInbody){
   if(!r) return true;
   if(countInbody !== false && r.inbody) return false;
+  if(countInbody !== false && r.labs && Object.keys(r.labs).length) return false;
   if(r.bodyWeight || r.arrived || r.backup) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
@@ -510,6 +513,51 @@ const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="
 /* ─────────── 인바디 ─────────── */
 const inbodyDays = () => Object.keys(log).filter(k => log[k] && log[k].inbody).sort();
 const IB = { smm:"골격근량", fat:"체지방량", pct:"체지방률", w:"체중" };
+
+// 피검사 항목 — 참고치는 10/1 검사지 기준. lo/hi 중 null은 한쪽만 의미 있음
+const LAB_GROUPS = [
+  { g:"근육·영양", items:[
+    ["alb","알부민","g/dL",3.5,5.2], ["tp","총단백","g/dL",6.6,8.7], ["cr","크레아티닌","mg/dL",0.5,1.21],
+    ["ck","CK(근육효소)","U/L",30,180], ["bun","BUN(요소질소)","mg/dL",8,20], ["egfr","eGFR(신장)","",60,null] ]},
+  { g:"빈혈·혈구", items:[
+    ["hb","헤모글로빈","g/dL",12,16], ["hct","헤마토크리트","%",36,49], ["rbc","적혈구","10⁶/µL",3.9,6],
+    ["mcv","MCV","fL",82,105], ["mch","MCH","pg",26,33], ["mchc","MCHC","g/dL",29,36],
+    ["wbc","백혈구","10³/µL",3.9,9.8], ["plt","혈소판","10³/µL",150,450] ]},
+  { g:"혈당", items:[ ["glu","공복혈당","mg/dL",70,100], ["a1c","당화혈색소","%",3.5,5.6] ]},
+  { g:"지질", items:[
+    ["ldl","LDL 콜레스테롤","mg/dL",null,140], ["hdl","HDL 콜레스테롤","mg/dL",40,null],
+    ["tg","중성지방","mg/dL",50,150], ["apob","아포지단백B","mg/dL",60,141] ]},
+  { g:"간", items:[
+    ["ast","AST","U/L",1,40], ["alt","ALT","U/L",1,40], ["alp","ALP","U/L",33,98],
+    ["ggt","γ-GTP","U/L",6,42], ["tbil","총빌리루빈","mg/dL",0.1,1.2] ]},
+  { g:"갑상선", items:[ ["tsh","TSH","µIU/mL",0.27,4.2], ["t3","T3","ng/dL",80,200], ["ft4","Free T4","ng/dL",0.92,1.68] ]},
+  { g:"호르몬", items:[
+    ["cort","코티솔(오전 기준)","µg/dL",6.02,18.4], ["acth","ACTH","pg/mL",7.2,63.3],
+    ["prl","프로락틴","ng/mL",4.79,23.3], ["steroid","스테로이드화합물","",35.4,256], ["igf1","IGF-1","ng/mL",null,null] ]},
+  { g:"전해질·기타", items:[
+    ["na","나트륨","mmol/L",135,145], ["k","칼륨","mmol/L",3.5,5.5], ["cl","염소","mmol/L",98,110],
+    ["crp","hs-CRP(염증)","mg/dL",0.01,0.3], ["ldh","LDH","U/L",125,220], ["amy","아밀라아제","U/L",28,100] ]}
+];
+const LAB_ITEMS = LAB_GROUPS.flatMap(G => G.items.map(([id,name,unit,lo,hi]) => ({ id, name, unit, lo, hi, g:G.g })));
+const labFlag = (it, v) => (it.lo !== null && v < it.lo) ? "L" : (it.hi !== null && v > it.hi) ? "H" : "";
+const labDays = () => Object.keys(log).filter(k => log[k] && log[k].labs && Object.keys(log[k].labs).length).sort();
+
+// 피검사 실측 — 인바디와 같은 방식으로 버전별 1회 반영, 이미 있는 날짜는 건드리지 않음
+function seedLabs(){
+  if(cfg.labSeed === 1) return;
+  const seed = { "2026-10-01": { wbc:7.01, rbc:4.52, hb:11.9, hct:37.7, mcv:83.4, mch:26.3, mchc:31.6, plt:224,
+    glu:93, a1c:5.1, tbil:0.47, ast:17, alt:16, alp:64, ggt:9, tp:6.8, alb:4.1, bun:14.3, cr:0.87, egfr:80,
+    tsh:3.35, t3:131.7, ft4:1.34, hdl:46, tg:53, ldl:152, apob:96.6, ldh:197, ck:80, amy:93,
+    na:140, cl:106, k:4.8, crp:0.07, cort:4.27, steroid:176.6, igf1:125.8, acth:10.3, prl:27.1 } };
+  let touched = false;
+  Object.keys(seed).forEach(k => {
+    if(!log[k]) log[k] = blank();
+    if(!log[k].labs){ log[k].labs = seed[k]; touched = true; }
+  });
+  cfg.labSeed = 1;
+  localStorage.setItem(CKEY, JSON.stringify(cfg));
+  if(touched) persist();
+}
 
 // 실측 기록 최초 1회만 채운다 (이미 있으면 건드리지 않음)
 function seedInbody(){
@@ -783,6 +831,7 @@ function rec(){
   r.session = r.session || {am:false,pm:false};
   r.shot = r.shot || {done:false,dose:null};
   if(r.inbody === undefined) r.inbody = null;
+  if(r.labs === undefined) r.labs = null;
   return r;
 }
 function setsOf(r, id, kind){
@@ -1685,6 +1734,8 @@ function renderTrend(){
     }
   }
 
+  renderLabs();
+
   const si2 = shotInfo(keyOf(new Date()));
   const mc = document.getElementById("mchart");
   if(!si2){
@@ -1782,6 +1833,7 @@ function renderHistory(days, todayKey){
     }
     if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "shot"));
     if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "ib"));
+    if(r.labs && Object.keys(r.labs).length) c.push(chip("피검사", "ib"));
     if(r.cycle?.start) c.push(chip("생리 시작", "cycle"));
     if(r.cycle?.end) c.push(chip("생리 종료", "cycle"));
     if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px;color:var(--mist);font-weight:700">체중 ${r.bodyWeight}</span>`);
@@ -1865,6 +1917,91 @@ function renderHistory(days, todayKey){
     histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
     renderHistory(days, todayKey);
   });
+}
+
+function renderLabs(){
+  const el = document.getElementById("labchart");
+  const ld = labDays();
+  const fmtV = v => (Math.round(v*100)/100).toString();
+  const refTxt = it => it.lo !== null && it.hi !== null ? `${it.lo}~${it.hi}` : it.lo !== null ? `${it.lo} 이상` : it.hi !== null ? `${it.hi} 이하` : "";
+  let h = "";
+  if(!ld.length){
+    h = `<div class="muted" style="font-size:13px">검사 결과를 입력하면 참고치 벗어난 항목과 이전 검사 대비 변화가 나옵니다.</div>`;
+  } else {
+    const last = ld[ld.length-1], prev = ld.length > 1 ? ld[ld.length-2] : null;
+    const L = log[last].labs, P = prev ? log[prev].labs : null;
+    const has = LAB_ITEMS.filter(it => L[it.id] !== undefined && L[it.id] !== null && L[it.id] !== "");
+    const flagged = has.filter(it => labFlag(it, +L[it.id]));
+    const delta = it => {
+      if(!P || P[it.id] === undefined || P[it.id] === null || P[it.id] === "") return "";
+      const d = +L[it.id] - +P[it.id];
+      return d === 0 ? ` · 이전 ${fmtV(+P[it.id])}` : ` · 이전 ${fmtV(+P[it.id])} (${d>0?"+":""}${fmtV(d)})`;
+    };
+    const row = it => {
+      const v = +L[it.id], f = labFlag(it, v);
+      const col = f ? "var(--rose)" : "var(--mist)";
+      return `<div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:flex-start">
+        <span style="font-size:12px">${it.name}<span class="muted" style="font-size:11px"> ${refTxt(it)}${delta(it)}</span></span>
+        <b style="font-size:13px;color:${col};white-space:nowrap;margin-left:8px">${fmtV(v)}${f==="H"?" ↑":f==="L"?" ↓":""}<span class="muted" style="font-size:10px;font-weight:400"> ${it.unit}</span></b></div>`;
+    };
+    h += `<div class="muted" style="font-size:12px">최근 검사 ${fmtKey(last)} · ${has.length}항목${prev ? ` · 이전 검사 ${fmtKey(prev)} 대비` : ""}</div>`;
+    h += `<div style="font-size:13px;font-weight:600;margin:12px 0 2px">참고치 벗어난 항목 ${flagged.length}개</div>`
+       + (flagged.length ? flagged.map(row).join("") : `<div class="muted" style="font-size:12px">입력된 항목은 모두 참고치 안에 있습니다.</div>`);
+    const muscle = has.filter(it => it.g === "근육·영양");
+    if(muscle.length){
+      h += `<div style="font-size:13px;font-weight:600;margin:14px 0 2px;color:${HC.ib.fg}">근육·영양 지표</div>` + muscle.map(row).join("")
+         + `<div class="muted" style="font-size:11px;margin-top:6px">알부민·총단백은 단백질 섭취, 크레아티닌·CK는 근육량·근육 손상과 관련 있습니다.</div>`;
+    }
+    h += `<details style="margin-top:12px"><summary class="muted" style="font-size:12px;cursor:pointer">전체 결과 보기</summary>`
+       + LAB_GROUPS.map(G => {
+           const its = has.filter(it => it.g === G.g);
+           return its.length ? `<div class="muted" style="font-size:11px;margin:10px 0 2px">${G.g}</div>` + its.map(row).join("") : "";
+         }).join("")
+       + `<div class="muted" style="font-size:11px;margin-top:8px">참고치는 10/1 검사지 기준입니다. 해석은 진료 의사 판단을 따르세요.</div></details>`;
+    if(ld.length > 1) h += `<div class="muted" style="font-size:11px;margin-top:8px">검사 이력: ${ld.map(fmtKey).join(" · ")}</div>`;
+  }
+  h += `<details style="margin-top:12px"><summary class="muted" style="font-size:12px;cursor:pointer">피검사 결과 입력 / 수정</summary><div id="labform" style="margin-top:9px"></div></details>`;
+  el.innerHTML = h;
+
+  const f = document.getElementById("labform");
+  const di = document.createElement("input");
+  di.type = "date"; di.className = "inp"; di.style.cssText = "width:100%;height:36px;font-size:12px";
+  di.value = ld.length ? ld[ld.length-1] : keyOf(new Date());
+  f.appendChild(di);
+  const inputs = {};
+  LAB_GROUPS.forEach(G => {
+    const t = document.createElement("div"); t.className = "muted"; t.style.cssText = "font-size:11px;margin:10px 0 4px"; t.textContent = G.g;
+    f.appendChild(t);
+    const grid = document.createElement("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+    G.items.forEach(([id,name,unit]) => {
+      const i = document.createElement("input"); i.type = "number"; i.step = "any"; i.inputMode = "decimal";
+      i.className = "inp"; i.style.cssText = "height:36px;font-size:12px;min-width:0;width:100%";
+      i.placeholder = name + (unit ? ` (${unit})` : "");
+      inputs[id] = i; grid.appendChild(i);
+    });
+    f.appendChild(grid);
+  });
+  const msg = document.createElement("div"); msg.className = "muted"; msg.style.cssText = "font-size:11px;min-height:14px;margin-top:6px";
+  const fill = () => {
+    const v = log[di.value] && log[di.value].labs;
+    Object.keys(inputs).forEach(id => inputs[id].value = v && v[id] !== undefined && v[id] !== null ? v[id] : "");
+    msg.style.color = ""; msg.textContent = v ? "이 날짜에 기록이 있습니다. 저장하면 덮어씁니다. 빈 칸은 저장되지 않습니다." : "검사지에 있는 항목만 입력하세요. 빈 칸은 건너뜁니다.";
+  };
+  di.onchange = fill; fill();
+  const brow = document.createElement("div"); brow.className = "setrow";
+  const sb = document.createElement("button"); sb.className = "setbtn"; sb.textContent = "저장";
+  sb.onclick = () => {
+    const v = {};
+    Object.keys(inputs).forEach(id => { const x = parseFloat(inputs[id].value); if(!isNaN(x)) v[id] = x; });
+    if(!Object.keys(v).length){ msg.style.color = "var(--rose)"; msg.textContent = "한 항목 이상 입력해주세요."; return; }
+    if(!log[di.value]) log[di.value] = blank();
+    log[di.value].labs = v;
+    persist(); renderTrend();
+  };
+  const db = document.createElement("button"); db.className = "setbtn"; db.textContent = "이 날짜 삭제";
+  db.onclick = () => { if(log[di.value] && log[di.value].labs){ log[di.value].labs = null; persist(); renderTrend(); } };
+  brow.appendChild(sb); brow.appendChild(db);
+  f.appendChild(brow); f.appendChild(msg);
 }
 
 function render(){
@@ -2482,6 +2619,7 @@ function showAuthLanding(){
   const loaded = await store.load();
   if(loaded) log = loaded;
   seedInbody();
+  seedLabs();
   render();
   if(cfg.url && cfg.key && !window.supabase) setSync("라이브러리 로드 실패");
   else setSync("준비됨");
