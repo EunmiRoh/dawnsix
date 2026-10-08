@@ -64,6 +64,7 @@
   nav button{flex:1;border:none;border-radius:0;background:none;color:var(--dim);height:52px;font-size:13px;padding:0}
   nav button.on{color:var(--dawn);font-weight:700;box-shadow:inset 0 -2px 0 var(--dawn)}
   .hide{display:none}
+  .clab{font-size:11px;color:var(--dim);margin:8px 0 2px;letter-spacing:.04em}
   button.primary{background:var(--dawn);border-color:var(--dawn);color:#fff;font-weight:600}
   button.primary:disabled{background:var(--panel2);border-color:var(--line);color:var(--dim);font-weight:400}
   .wk{padding:0;overflow:hidden}
@@ -246,15 +247,15 @@
     <h1 style="margin-bottom:14px">누적</h1>
     <div class="stats" id="stats"></div>
     <div class="card" id="wcompare"></div>
-    <h2>아침 공복 체중 (kg)</h2>
+    <h2>한눈에 보기</h2>
     <div id="tnav" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"></div>
-    <div class="card" id="wchart"></div>
-    <h2>운동</h2>
-    <div class="card" id="gchart"></div>
-    <h2>일별 단백질 (g)</h2>
-    <div class="card" id="pchart"></div>
-    <h2>배변</h2>
-    <div class="card" id="schart"></div>
+    <div class="card" style="padding:10px 12px 10px">
+      <div class="clab" style="margin-top:0">아침 공복 체중 (kg)</div><div id="wchart"></div>
+      <div class="clab">운동</div><div id="gchart"></div>
+      <div class="clab">단백질 (g)</div><div id="pchart"></div>
+      <div class="clab">배변</div><div id="schart"></div>
+      <div id="tlegend"></div>
+    </div>
     <h2>생리 주기</h2>
     <div class="card" id="cchart"></div>
     <h2>인바디</h2>
@@ -463,7 +464,7 @@ const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(
 const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -478,7 +479,7 @@ function isEmptyDay(r, countInbody){
   if(!r) return true;
   if(countInbody !== false && r.inbody) return false;
   if(countInbody !== false && r.labs && Object.keys(r.labs).length) return false;
-  if(r.bodyWeight || r.arrived || r.backup) return false;
+  if(r.bodyWeight || r.arrived || r.backup || r.off) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
   if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
@@ -543,6 +544,19 @@ const LAB_GROUPS = [
 const LAB_ITEMS = LAB_GROUPS.flatMap(G => G.items.map(([id,name,unit,lo,hi]) => ({ id, name, unit, lo, hi, g:G.g })));
 const labFlag = (it, v) => (it.lo !== null && v < it.lo) ? "L" : (it.hi !== null && v > it.hi) ? "H" : "";
 const labDays = () => Object.keys(log).filter(k => log[k] && log[k].labs && Object.keys(log[k].labs).length).sort();
+
+// 손 열상(9/19 봉합 ~ 10/7 운동 복귀) 회복 기간 — 운동일인데 운동 기록이 없는 날을 회복·휴식일로 1회 표시
+function seedOff(){
+  if(cfg.offSeed === 1) return;
+  let touched = false;
+  Object.keys(log).filter(k => k >= "2026-09-19" && k <= "2026-10-06").forEach(k => {
+    const r = log[k], d = parseKey(k).getDay();
+    if(r && isGymDay(d) && !gymOK(r) && !r.off){ r.off = true; touched = true; }
+  });
+  cfg.offSeed = 1;
+  localStorage.setItem(CKEY, JSON.stringify(cfg));
+  if(touched) persist();
+}
 
 // 피검사 실측 — 인바디와 같은 방식으로 버전별 1회 반영, 이미 있는 날짜는 건드리지 않음
 function seedLabs(){
@@ -834,6 +848,7 @@ function rec(){
   r.shot = r.shot || {done:false,dose:null};
   if(r.inbody === undefined) r.inbody = null;
   if(r.labs === undefined) r.labs = null;
+  if(r.off === undefined) r.off = false;
   return r;
 }
 function setsOf(r, id, kind){
@@ -1106,6 +1121,12 @@ function renderToday(){
     b4.textContent = "집 운동 코치와 함께 하기";
     b4.onclick = () => { goTab("home"); if(HO.phase === "idle") homeStart(); };
     c.appendChild(b4);
+    const b5 = document.createElement("button");
+    b5.style.cssText = "width:100%;height:42px;margin-top:8px;font-size:12px;font-weight:700";
+    if(r.off){ b5.style.background = "var(--dim)"; b5.style.color = "#fff"; }
+    b5.textContent = r.off ? "오늘은 회복·휴식일로 표시했습니다" : "오늘은 회복·휴식일 (아프거나 쉬어야 하는 날)";
+    b5.onclick = () => mutate(x => { x.off = !x.off; });
+    c.appendChild(b5);
     box.appendChild(c);
   }
 
@@ -1427,9 +1448,10 @@ function renderToday(){
 const CH = { pad:34, day:30, right:12, h:158 };
 const chartW = n => CH.pad + Math.max(n,1)*CH.day + CH.right;
 
-function lineChart(points, unit, marks){
+function lineChart(points, unit, marks, opt={}){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
-  const H=CH.h, P=CH.pad;
+  const H = opt.h || CH.h, P=CH.pad, showLab = opt.labels !== false;
+  const base = showLab ? base : H-6, span2 = base-22;   // 날짜를 맨 아래 그래프에만 둘 땐 바닥 여백을 줄인다
   const slots = (points.slots || points.length);
   const W = chartW(slots);
   // 세로 범위를 최소 4kg로 잡아 하루 0.몇 kg 변동이 급경사로 보이지 않게 한다
@@ -1438,7 +1460,7 @@ function lineChart(points, unit, marks){
   const mn = mid-half, mx = mid+half, span = mx-mn;
   const pts = points.map((p,i)=>({
     x: P + ((p.i === undefined ? i : p.i))*CH.day + CH.day/2,
-    y: H-26 - ((p.v-mn)/span)*(H-50), ...p }));
+    y: base - ((p.v-mn)/span)*span2, ...p }));
   // 단조 3차 보간(Fritsch–Carlson) — 점 사이를 부드럽게 잇되 실제 값보다 튀어나가지 않는다
   const n = pts.length, dx = [], m = [], t = [];
   for(let i=0;i<n-1;i++){ dx[i] = pts[i+1].x-pts[i].x; m[i] = (pts[i+1].y-pts[i].y)/dx[i]; }
@@ -1454,35 +1476,36 @@ function lineChart(points, unit, marks){
     path += ` C${f(a.x+h)},${f(a.y+t[i]*h)} ${f(b.x-h)},${f(b.y-t[i+1]*h)} ${f(b.x)},${f(b.y)}`;
   }
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
-    <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
+    <line x1="${P}" y1="${base}" x2="${W-CH.right}" y2="${base}" stroke="var(--line)"/>
     <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
     <text x="2" y="${H-28}" font-size="9" fill="var(--dim)">${mn.toFixed(1)}</text>
     ${(marks||[]).filter(m=>pts.some(p=>p.k===(m.k||m))).map(m=>{
       const kk = m.k || m, col = m.color || "var(--rose)", lb = m.label || "생리";
       const p = pts.find(x=>x.k===kk);
-      return `<line x1="${p.x}" y1="18" x2="${p.x}" y2="${H-26}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3"/>
+      return `<line x1="${p.x}" y1="18" x2="${p.x}" y2="${base}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3"/>
         <text x="${p.x}" y="14" font-size="8" fill="${col}" text-anchor="middle">${lb}</text>`;
     }).join("")}
     <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--dawn)"/>
       <text x="${p.x}" y="${p.y-8}" font-size="9" fill="var(--mist)" text-anchor="middle">${p.v.toFixed(1)}</text>
-      <text x="${p.x}" y="${H-12}" font-size="9" fill="var(--dim)" text-anchor="middle">${p.lab}</text>`).join("")}
+      ${showLab ? `<text x="${p.x}" y="${H-12}" font-size="9" fill="var(--dim)" text-anchor="middle">${p.lab}</text>` : ""}`).join("")}
   </svg>`;
 }
 
-function barChart(points){
+function barChart(points, opt={}){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
-  const H=CH.h, P=CH.pad, W=chartW(points.length);
+  const H = opt.h || CH.h, P=CH.pad, W=chartW(points.length), showLab = opt.labels !== false;
+  const base = showLab ? base : H-4, span2 = base-16;
   const top = Math.max(GOAL, ...points.map(p=>p.v))*1.1;
-  const bw = CH.day, gy = H-26-(GOAL/top)*(H-50);
+  const bw = CH.day, gy = base-(GOAL/top)*span2;
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
-    <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
+    <line x1="${P}" y1="${base}" x2="${W-CH.right}" y2="${base}" stroke="var(--line)"/>
     <line x1="${P}" y1="${gy}" x2="${W-CH.right}" y2="${gy}" stroke="${HC.prot.fg}" stroke-dasharray="3 3"/>
     <text x="2" y="${gy+3}" font-size="9" fill="${HC.prot.fg}">${GOAL}</text>
-    ${points.map((p,i)=>{ const h=(p.v/top)*(H-50); return `
-      <rect x="${P+i*bw+bw*.15}" y="${H-26-h}" width="${bw*.7}" height="${Math.max(h,0)}" rx="2" fill="${p.v>=GOAL?HC.prot.solid:HC.prot.light}"/>
-      <text x="${P+i*bw+bw/2}" y="${H-26-h-4}" font-size="8" fill="var(--mist)" text-anchor="middle">${p.v||""}</text>
-      <text x="${P+i*bw+bw/2}" y="${H-12}" font-size="8" fill="var(--dim)" text-anchor="middle">${p.lab}</text>`;}).join("")}
+    ${points.map((p,i)=>{ const h=(p.v/top)*span2; return `
+      <rect x="${P+i*bw+bw*.15}" y="${base-h}" width="${bw*.7}" height="${Math.max(h,0)}" rx="2" fill="${p.v>=GOAL?HC.prot.solid:HC.prot.light}"/>
+      <text x="${P+i*bw+bw/2}" y="${base-h-4}" font-size="8" fill="var(--mist)" text-anchor="middle">${p.v||""}</text>
+      ${showLab ? `<text x="${P+i*bw+bw/2}" y="${H-12}" font-size="8" fill="var(--dim)" text-anchor="middle">${p.lab}</text>` : ""}`;}).join("")}
   </svg>`;
 }
 
@@ -1554,7 +1577,7 @@ function renderTrend(){
   document.getElementById("wchart").innerHTML = wrapScroll(lineChart(wpts, null, [
     ...cycleStarts().map(k => ({ k, color:HC.cycle.solid, label:"생리" })),
     ...shotDays().map(k => ({ k, color:HC.shot.solid, label:"주사" }))
-  ]));
+  ], { h:104, labels:false }));
   // 운동 — 같은 x축. 막대 높이 = 세트 완료율, 대체(집운동)는 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 휴무
   const gcell = k => {
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
@@ -1562,32 +1585,29 @@ function renderTrend(){
     const done = isGymDay(dow) ? gymOK(r) : !!(r?.backup || sessionCount(r));
     const home = !!r?.backup && !(isGymDay(dow) && ratio >= .5);
     let box;
-    if(kind === "rest" && !done) box = `<div style="height:44px;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--dim)">휴</div>`;
-    else if(home) box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:26px;border-radius:6px;background:${HC.gym.bg};border:1.5px dashed ${HC.gym.fg}"></div></div>`;
+    const tag = t => `<div style="height:28px;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--dim)">${t}</div>`;
+    if(kind === "rest" && !done) box = tag("휴");
+    else if(r?.off && !done) box = tag("쉼");                                       // 회복·휴식일은 실패로 보이지 않게
+    else if(k === keyOf(new Date()) && !done) box = tag("오늘");                    // 하루가 안 끝났으니 판정 보류
+    else if(home) box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:16px;border-radius:5px;background:${HC.gym.bg};border:1.5px dashed ${HC.gym.fg}"></div></div>`;
     else if(done){
-      const h = Math.round(16 + 28 * Math.max(ratio, r?.arrived || sessionCount(r) ? .5 : 0));
-      box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:${h}px;border-radius:6px;background:${HC.gym.solid}"></div></div>`;
+      const h = Math.round(12 + 16 * Math.max(ratio, r?.arrived || sessionCount(r) ? .5 : 0));
+      box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:${h}px;border-radius:5px;background:${HC.gym.solid}"></div></div>`;
     }
-    else box = `<div style="height:44px;display:flex;align-items:flex-end"><div style="width:100%;height:26px;border-radius:6px;border:1.5px dashed ${HC.gym.fg};opacity:.55"></div></div>`;
+    else box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:16px;border-radius:5px;border:1.5px dashed ${HC.gym.fg};opacity:.55"></div></div>`;
     const yoga = r?.yoga?.done ? "요가" : "";
     return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">${box}
-      <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
-      <div style="font-size:9px;color:${yoga ? HC.gym.fg : "transparent"}">${yoga || "-"}</div></div>`;
+      <div style="font-size:8px;line-height:11px;height:11px;color:${HC.gym.fg}">${yoga}</div></div>`;
   };
   const wk7 = view.filter(k => k > addDays(keyOf(new Date()), -7));
   const gym7 = wk7.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && (log[k]?.backup || sessionCount(log[k]))); }).length;
   document.getElementById("gchart").innerHTML = view.length
     ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(view.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + view.map(gcell).join("") + `</div></div>
-      <div class="muted" style="font-size:11px;margin-top:10px">
-        <span style="white-space:nowrap"><span style="color:${HC.gym.solid}">■</span> 헬스 (높을수록 세트 많이)</span> &nbsp;
-        <span style="white-space:nowrap"><span style="color:${HC.gym.fg}">▣</span> 집운동·대체</span> &nbsp;
-        <span style="white-space:nowrap"><span style="color:${HC.gym.fg}">□</span> 못 한 날</span> &nbsp;
-        <span style="white-space:nowrap">휴 = 월요일 휴관</span></div>
-      <div class="muted" style="font-size:12px;margin-top:8px">최근 7일 운동 <b style="color:${HC.gym.fg}">${gym7}회</b></div>`
+`
     : `<div class="muted" style="font-size:13px">운동을 기록하면 여기에 표시됩니다.</div>`;
 
   document.getElementById("pchart").innerHTML =
-    wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)}))));
+    wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})), { h:84, labels:false }));
 
   const sdays = view;
   const SCOL = { none:"var(--panel2)", hard:HC.stool.bg, normal:HC.stool.solid, loose:"transparent" };
@@ -1598,17 +1618,18 @@ function renderTrend(){
         const bg = t ? SCOL[t] : "transparent";
         const bd = (t==="hard" || t==="loose") ? `1.5px dashed ${HC.stool.fg}` : `1.5px solid ${t ? bg : "var(--line)"}`;
         return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
-          <div style="height:26px;border-radius:7px;background:${bg};border:${bd}"></div>
-          <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
+          <div style="height:18px;border-radius:5px;background:${bg};border:${bd}"></div>
+          <div class="muted" style="font-size:9px;margin-top:3px">${lab(k)}</div>
           <div class="muted" style="font-size:9px;color:${sm?HC.stool.fg:"transparent"}">적음</div></div>`;
-      }).join("") + `</div></div>
-      <div class="muted" style="font-size:11px;margin-top:10px">
-        <span style="color:${HC.stool.solid}">■</span> 정상 &nbsp;
-        <span style="color:${HC.stool.fg}">▣</span> 딱딱 &nbsp;
-        <span style="color:${HC.stool.fg}">□</span> 무름 &nbsp;
-        <span style="color:var(--dim)">■</span> 없음</div>
-      <div class="muted" style="font-size:12px;margin-top:8px">${sgap===null?"제대로 본 날 기록 없음":sgap===0?"오늘 정상":`마지막 정상 배변 후 ${sgap}일`}</div>`
+      }).join("") + `</div></div>`
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
+
+  // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
+  const nw = s => `<span style="white-space:nowrap">${s}</span>`;
+  document.getElementById("tlegend").innerHTML = view.length ? `<div class="muted" style="font-size:10.5px;line-height:1.7;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
+      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 못 한 날`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
+      <div>${nw(`단백질 <span style="color:${HC.prot.fg}">┅</span> 목표 ${GOAL}g`)} · ${nw(`배변 <b style="color:${HC.stool.fg}">${sgap===null?"정상 기록 없음":sgap===0?"오늘 정상":`정상 후 ${sgap}일`}</b>`)} ${nw(`<span style="color:${HC.stool.solid}">■</span> 정상`)} ${nw(`<span style="color:${HC.stool.fg}">▣</span> 딱딱`)} ${nw(`<span style="color:${HC.stool.fg}">□</span> 무름`)}</div>
+    </div>` : "";
 
   // 세 그래프 가로 스크롤 묶기 — 마지막 위치 유지, 처음엔 최신(오른쪽 끝)
   const boxes = [...document.querySelectorAll('#tab-trend .hscroll[data-sync="1"]')];
@@ -1857,6 +1878,7 @@ function renderHistory(days, todayKey){
     else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "gym"));
     if(r.yoga?.done) c.push(chip("요가", "gym"));
     if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "gym"));
+    if(r.off) c.push(chip("회복·휴식"));
     const p = proteinOf(r);
     if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
     else c.push(chip(`단백질 ${p}g`, "prot", p >= GOAL ? "full" : p < 60 ? "weak" : null));
@@ -2653,6 +2675,7 @@ function showAuthLanding(){
   if(loaded) log = loaded;
   seedInbody();
   seedLabs();
+  seedOff();
   render();
   if(cfg.url && cfg.key && !window.supabase) setSync("라이브러리 로드 실패");
   else setSync("준비됨");

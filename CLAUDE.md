@@ -41,7 +41,8 @@ log["2026-10-07"] = {
   session: { am: false, pm: false },        // 아침/저녁 운동 (둘 다 가능)
   shot:    { done: false, dose: null },     // 마운자로 주사 + 용량(mg)
   inbody:  null,                            // { w, smm, fat, pct, est? }
-  labs:    null                             // 피검사 { 항목id: 수치 } — LAB_GROUPS 참고
+  labs:    null,                            // 피검사 { 항목id: 수치 } — LAB_GROUPS 참고
+  off:     false                            // 회복·휴식일 (아프거나 쉬어야 하는 날 — 운동 그래프에서 "쉼")
 };
 ```
 
@@ -60,6 +61,7 @@ r.session = r.session || { am:false, pm:false };
 r.shot    = r.shot    || { done:false, dose:null };
 if(r.inbody === undefined) r.inbody = null;
 if(r.labs === undefined) r.labs = null;
+if(r.off === undefined) r.off = false;
 ```
 
 ### 인바디 시드 메커니즘
@@ -108,8 +110,12 @@ function seedInbody(){
 
 ### 가로 스크롤 그래프
 
-- 체중(라인) · **운동(스트립)** · 단백질(막대) · 배변(스트립) **네 개가 같은 x축**을 쓰고 **스크롤이 묶여 있다** (`#tab-trend .hscroll[data-sync]` 전부 자동 연동).
-- 운동 스트립(`gchart`): 막대 높이 = 세트 완료율(`ratioOf`), 대체·집운동은 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 `휴`. 요가는 날짜 아래 표기. 하단에 최근 7일 운동 횟수.
+- **"한눈에 보기" 카드 하나**에 체중(라인) · 운동(스트립) · 단백질(막대) · 배변(스트립)을 쌓았다. **폰 한 화면(약 540px)에 4개가 다 보이게** 하는 게 사용자 요구 — 높이·여백을 늘리지 말 것.
+  - 네 개가 같은 x축, 스크롤 연동 (`#tab-trend .hscroll[data-sync]` 전부 자동).
+  - 날짜는 **맨 아래 배변 줄에만**. `lineChart(..., {h:104, labels:false})`, `barChart(..., {h:84, labels:false})`.
+  - 범례·요약(최근 7일 운동, 단백질 목표, 마지막 정상 배변)은 카드 맨 아래 `#tlegend` 한곳에.
+- 운동 스트립(`gchart`): 막대 높이 = 세트 완료율(`ratioOf`), 대체·집운동은 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, `쉼` = 회복·휴식일(`r.off`), `휴` = 월요일, `오늘` = 아직 운동 기록 전(판정 보류). 요가는 막대 아래 작은 글씨.
+- 회복·휴식일: 오늘 탭 "못 나갈 것 같은 날" 카드의 버튼으로 표시. 손 열상 기간(9/19~10/6) 운동일은 `seedOff()`(`cfg.offSeed === 1`)로 1회 자동 표시.
 - 공통 지오메트리: `CH = { pad:34, day:30, right:12, h:158 }`, `chartW(n)`
 - `lineChart(points, unit, marks)` — `points[i].i`로 날짜 슬롯 번호를 넘겨 다른 그래프와 x축을 맞춘다. (체중은 기록 없는 날을 건너뛰므로 이게 없으면 어긋난다.)
 - `marks`는 `{k, color, label}` 배열 — 주사(`HC.shot`)·생리(`HC.cycle`) 세로 점선.
