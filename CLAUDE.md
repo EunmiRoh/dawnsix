@@ -180,6 +180,9 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 - Redirect URL에 `https://dawnsix.vercel.app/**` 등록 완료.
 - **미완료 원인:** 8/3에 로그인은 됐으나 그 시점에 테이블이 없어 저장이 조용히 실패했음. 테이블은 9월에 생성. 이후 재로그인 미실행.
 - 재개하려면: 기록이 들어 있는 **폰에서 먼저** 설정 탭 → URL/key 저장 → 로그인. (PC에서 먼저 하면 빈 데이터가 올라갈 위험)
+- **10/8 확인한 실패 원인:** ① 무료 플랜이라 7일 무요청 시 프로젝트가 **자동 일시정지** → 그동안 모든 연결 실패 (10/8 MCP로 restore). ② 로그인 버튼을 두 번 눌러 메일 2통 → 앞 링크 무효. ③ 메일 링크가 **Chrome**으로 열려 Safari(기록 있는 쪽)와 저장소가 달라 로그인 실패.
+- 대응: 로그인 버튼 전송 중·후 60초 잠금, 링크가 설정 없는 브라우저에서 열리거나 만료되면 설정 탭에 안내(`showAuthLanding`, `authNotice`). 부팅 시 `connect()`는 `store.load()` 이후에 실행 (먼저 하면 로컬 로드가 클라우드 병합 결과를 덮음).
+- 키는 legacy anon(eyJ…)·publishable(sb_publishable_…) 둘 다 유효.
 
 ---
 
