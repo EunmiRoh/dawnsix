@@ -89,6 +89,12 @@
     #tab-setup > h1{grid-column:1 / -1}
     #authcard{grid-column:2;grid-row:2 / span 2}
     #tab-gear > h2{break-after:avoid}
+    /* 집: 왼쪽 시작·진행 화면 / 오른쪽 동작 설명(그림 카드 두 줄) */
+    body[data-tab="home"] .wrap{max-width:1180px}
+    .hgrid{display:grid;grid-template-columns:400px 1fr;gap:28px;align-items:start}
+    .hright h2{margin-top:0}
+    #home-manual{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    #home-manual .card{margin-bottom:0}
   }
   @media (min-width:1600px){ body{zoom:1.15} }              /* 큰 모니터에서 글자가 너무 작아 보이지 않게 */
   .clab{font-size:11px;color:var(--dim);margin:8px 0 2px;letter-spacing:.04em}
@@ -263,10 +269,16 @@
     <p class="muted" style="margin:0 0 16px">
       체력단련실에 못 갈 때. 기구 없이 집에서. 층간소음 없는 동작만 골랐습니다. 발목·무릎을 잡아주는 관절 운동도 들어 있습니다. 시간이 없으면 "짧게"를 고르세요.
     </p>
-    <div id="home-body"></div>
-    <div id="home-ctrl" style="display:flex;gap:8px;margin-top:16px"></div>
-    <h2>동작 설명</h2>
-    <div id="home-manual"></div>
+    <div class="hgrid">
+      <div class="hleft">
+        <div id="home-body"></div>
+        <div id="home-ctrl" style="display:flex;gap:8px;margin-top:16px"></div>
+      </div>
+      <div class="hright">
+        <h2>동작 설명</h2>
+        <div id="home-manual"></div>
+      </div>
+    </div>
   </section>
 
   <!-- 추이 -->
@@ -488,6 +500,70 @@ const HOME = [
            "누워서 한쪽 무릎을 가슴으로 당긴다 (엉덩이)",
            "각 15초씩. 숨을 참지 말고 천천히"] },
 ];
+// 집 운동 동작 그림 — 막대 인형으로 시작 자세 → 끝 자세 (외부 이미지 없이 SVG, 오른쪽을 보는 옆모습)
+// 관절 좌표는 100×104 칸 기준: h머리 n어깨 p골반, 1=가까운 쪽(진하게) 2=먼 쪽(연하게) 팔꿈치e·손w·무릎k·발f, t=발끝
+const HFIG = (() => {
+  const S = { h:[50,16], n:[50,27], p:[50,56], k1:[50,77], f1:[50,98], k2:[49,77], f2:[49,98], e1:[50,42], w1:[50,56], e2:[49,42], w2:[49,56] };
+  const st = o => ({ ...S, ...o });
+  const chairL = { chair:[22,70] }, chairK = { chair:[28,68] };
+  return {
+    warmwalk:[ st({k1:[60,68],f1:[56,86],e1:[43,40],w1:[38,52],e2:[57,40],w2:[63,50]}),
+               st({k2:[60,68],f2:[56,86],e1:[57,40],w1:[63,50],e2:[43,40],w2:[38,52]}) ],
+    // 어깨 돌리기는 옆모습이면 팔이 겹쳐서 정면으로: 손은 어깨에, 팔꿈치가 아래 → 위로 원을 그림
+    warmarm:[ st({e1:[37,42],w1:[45,28],e2:[63,42],w2:[55,28],k1:[46,77],f1:[45,98],k2:[54,77],f2:[55,98]}),
+              st({e1:[36,13],w1:[45,26],e2:[64,13],w2:[55,26],k1:[46,77],f1:[45,98],k2:[54,77],f2:[55,98]}) ],
+    hsquat:[ st({e1:[60,36],w1:[72,36],e2:[59,36],w2:[71,36], ...chairL}),
+             st({h:[60,35],n:[54,45],p:[40,70],k1:[60,77],f1:[56,98],k2:[59,77],f2:[55,98],e1:[66,50],w1:[78,50],e2:[65,50],w2:[77,50], ...chairL}) ],
+    hbridge:[ { h:[16,93],n:[27,95],p:[52,95],k1:[66,78],f1:[74,98],k2:[65,78],f2:[73,98],e1:[37,98],w1:[47,98],e2:[36,98],w2:[46,98] },
+              { h:[17,93],n:[28,94],p:[52,80],k1:[68,76],f1:[74,98],k2:[67,76],f2:[73,98],e1:[38,98],w1:[48,98],e2:[37,98],w2:[47,98] } ],
+    hwallsit:[ st({h:[42,16],n:[42,27],p:[42,56],k1:[44,77],f1:[46,98],k2:[43,77],f2:[45,98],e1:[43,42],w1:[45,56],e2:[42,42],w2:[44,56], wall:34}),
+               { h:[42,33],n:[42,44],p:[42,72],k1:[63,72],f1:[63,98],k2:[62,72],f2:[62,98],e1:[50,58],w1:[58,68],e2:[49,58],w2:[57,68], wall:34 } ],
+    hsideleg:[ { h:[16,84],n:[26,92],p:[54,94],k1:[74,95],f1:[94,96],k2:[74,97],f2:[94,98],e2:[20,99],w2:[14,90],e1:[38,88],w1:[48,93] },
+               { h:[16,84],n:[26,92],p:[54,94],k1:[73,86],f1:[91,77],k2:[74,97],f2:[94,98],e2:[20,99],w2:[14,90],e1:[38,88],w1:[48,93] } ],
+    hpush:[ { h:[61,24],n:[58,34],p:[50,62],k1:[45,80],f1:[40,98],k2:[44,80],f2:[39,98],e1:[73,34],w1:[87,32],e2:[72,35],w2:[86,33], wall:88 },
+            { h:[73,29],n:[68,38],p:[54,63],k1:[46,81],f1:[40,98],k2:[45,81],f2:[39,98],e1:[75,47],w1:[87,33],e2:[74,48],w2:[86,34], wall:88 } ],
+    hsuper:[ { h:[84,94],n:[74,97],p:[48,97],k1:[30,98],f1:[12,98],k2:[30,99],f2:[12,99],e1:[86,98],w1:[97,98],e2:[85,99],w2:[96,99] },
+             { h:[84,89],n:[73,94],p:[48,97],k1:[30,95],f1:[12,89],k2:[30,96],f2:[12,90],e1:[85,89],w1:[96,84],e2:[84,90],w2:[95,85] } ],
+    hbirddog:[ { h:[77,70],n:[66,76],p:[38,76],k1:[38,98],f1:[18,98],k2:[37,98],f2:[17,98],e1:[66,88],w1:[66,99],e2:[65,88],w2:[65,99] },
+               { h:[77,70],n:[66,76],p:[38,76],k1:[38,98],f1:[18,98],k2:[20,77],f2:[3,79],e1:[80,73],w1:[95,70],e2:[65,88],w2:[65,99] } ],
+    hplank:[ { h:[75,79],n:[64,83],p:[39,89],k1:[18,98],f1:[5,88],k2:[17,98],f2:[4,88],e1:[64,98],w1:[79,98],e2:[63,98],w2:[78,98] } ],
+    hdeadbug:[ { h:[19,93],n:[30,95],p:[56,95],k1:[58,74],f1:[78,74],k2:[57,74],f2:[77,74],e1:[32,80],w1:[34,64],e2:[31,80],w2:[33,64] },
+               { h:[19,93],n:[30,95],p:[56,95],k1:[58,74],f1:[78,74],k2:[77,90],f2:[97,94],e1:[16,92],w1:[4,95],e2:[31,80],w2:[33,64] } ],
+    hcalf:[ st({e1:[60,44],w1:[72,57],e2:[59,44],w2:[71,57], table:74}),
+            { h:[50,10],n:[50,21],p:[50,50],k1:[50,71],f1:[51,92],t1:[57,98],k2:[49,71],f2:[50,92],t2:[56,98],e1:[60,38],w1:[72,57],e2:[59,38],w2:[71,57], table:74 } ],
+    hbalance:[ st({e1:[38,38],w1:[28,44],e2:[62,38],w2:[72,44]}),
+               st({e1:[38,38],w1:[28,44],e2:[62,38],w2:[72,44],k2:[60,68],f2:[47,80]}) ],
+    hknee:[ { h:[40,26],n:[40,37],p:[40,66],k1:[62,66],f1:[62,98],k2:[61,67],f2:[61,98],e1:[46,52],w1:[55,62],e2:[45,52],w2:[54,62], ...chairK },
+            { h:[40,26],n:[40,37],p:[40,66],k1:[62,66],f1:[84,64],k2:[61,67],f2:[61,98],e1:[46,52],w1:[55,62],e2:[45,52],w2:[54,62], ...chairK } ],
+    cooldown:[ { h:[30,57],n:[30,68],p:[30,96],k1:[52,97],f1:[74,97],k2:[52,98],f2:[74,98],e1:[34,82],w1:[44,90],e2:[33,82],w2:[43,90] },
+               { h:[60,72],n:[50,78],p:[30,96],k1:[52,97],f1:[74,97],k2:[52,98],f2:[74,98],e1:[60,88],w1:[72,93],e2:[59,88],w2:[71,93] } ]
+  };
+})();
+function homeFig(id, maxW){
+  const poses = HFIG[id];
+  if(!poses) return "";
+  const near = "#4B5CE8", far = "#AEB6F3", prop = "#C9CEE0";
+  const L = (a,b,c,w) => a && b ? `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>` : "";
+  const frame = (q, dx) => {
+    let g = `<line x1="0" y1="101" x2="100" y2="101" stroke="${prop}" stroke-width="1.5"/>`;
+    if(q.wall) g += `<line x1="${q.wall}" y1="8" x2="${q.wall}" y2="101" stroke="${prop}" stroke-width="3"/>`;
+    if(q.table) g += `<line x1="${q.table}" y1="58" x2="100" y2="58" stroke="${prop}" stroke-width="3"/><line x1="${q.table+4}" y1="58" x2="${q.table+4}" y2="101" stroke="${prop}" stroke-width="2"/>`;
+    if(q.chair){ const [cx,cy] = q.chair;
+      g += `<line x1="${cx}" y1="${cy}" x2="${cx+22}" y2="${cy}" stroke="${prop}" stroke-width="3"/><line x1="${cx}" y1="${cy-30}" x2="${cx}" y2="101" stroke="${prop}" stroke-width="2.5"/><line x1="${cx+20}" y1="${cy}" x2="${cx+20}" y2="101" stroke="${prop}" stroke-width="2"/>`; }
+    // 먼 쪽 팔다리 → 몸통 → 가까운 쪽 팔다리 → 머리
+    g += L(q.n,q.e2,far,4.5) + L(q.e2,q.w2,far,4.5) + L(q.p,q.k2,far,5) + L(q.k2,q.f2,far,5) + L(q.f2,q.t2,far,4);
+    g += L(q.n,q.p,near,6);
+    g += L(q.p,q.k1,near,5) + L(q.k1,q.f1,near,5) + L(q.f1,q.t1,near,4) + L(q.n,q.e1,near,4.5) + L(q.e1,q.w1,near,4.5);
+    g += `<circle cx="${q.h[0]}" cy="${q.h[1]}" r="6.5" fill="${near}"/>`;
+    return `<g transform="translate(${dx},0)">${g}</g>`;
+  };
+  if(poses.length === 1)
+    return `<svg viewBox="0 0 100 104" style="width:100%;max-width:${(maxW||240)*0.48}px;height:auto;display:block;margin:0 auto" role="img" aria-label="동작 그림">${frame(poses[0],0)}</svg>`;
+  return `<svg viewBox="0 0 222 104" style="width:100%;max-width:${maxW||240}px;height:auto;display:block;margin:0 auto" role="img" aria-label="시작 자세에서 끝 자세로">
+    ${frame(poses[0],0)}
+    <path d="M103 54 L117 54 M112 49 L118 54 L112 59" stroke="#8E93A6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    ${frame(poses[1],122)}</svg>`;
+}
 const HOME_REST = 40;
 const BACKUP = ["의자 스쿼트 20회 × 3세트","벽 푸시업 10회 × 3세트","무릎 플랭크 20초 × 3회"];
 const DAY = ["일","월","화","수","목","금","토"];
@@ -2488,6 +2564,7 @@ function renderHome(){
   } else if(HO.phase==="ready"){
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div class="muted" style="font-size:14px">${e.name} 준비</div>
+      <div style="margin:10px 0 6px">${homeFig(e.id, 260)}</div>
       <div style="font-size:72px;font-weight:800;color:var(--dawn);line-height:1.1">${HO.count}</div>
       <div class="muted" style="font-size:13px">${e.cue}</div></div>`;
   } else if(HO.phase==="rep"){
@@ -2496,6 +2573,7 @@ function renderHome(){
     body.innerHTML = `<div class="card" style="text-align:center;padding:26px 16px">
       <div style="font-size:12px;color:var(--dawn);letter-spacing:.12em">${e.group} · ${HO.set+1}세트 / ${e.sets}</div>
       <div style="font-size:20px;font-weight:700;margin:6px 0 8px">${e.name}</div>
+      <div style="margin:0 0 10px">${homeFig(e.id, 240)}</div>
       <div style="font-size:92px;font-weight:800;line-height:1">${big}</div>
       <div class="muted" style="font-size:13px">${unit}</div>
       <div style="color:var(--dawn);font-size:14px;margin-top:16px">${e.cue}</div></div>`;
@@ -2506,7 +2584,8 @@ function renderHome(){
       <div style="color:var(--sage);font-size:14px">휴식</div>
       <div style="font-size:72px;font-weight:800;color:var(--sage);line-height:1.1">${HO.count}</div>
       <div style="font-size:17px;font-weight:700;margin-top:4px">${hLast ? `다음 · ${hNext.name}` : `${e.name} ${HO.set+2}세트`}</div>
-      <div class="muted" style="font-size:13px;margin-top:4px">${hNext.hold ? hNext.dur+"초" : hNext.reps+"회"}</div></div>`;
+      <div class="muted" style="font-size:13px;margin-top:4px">${hNext.hold ? hNext.dur+"초" : hNext.reps+"회"}</div>
+      <div style="margin-top:12px">${homeFig(hNext.id, 220)}</div></div>`;
   } else {
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px 16px">
       <div style="font-size:24px;font-weight:800;color:var(--sage)">끝났습니다</div>
@@ -2533,6 +2612,7 @@ function renderHome(){
         <span style="margin-left:8px">${x.name}</span><span class="muted" style="font-size:11px;margin-left:6px;font-weight:400">${x.group}</span></b>
         <span class="muted" style="font-size:12px">${x.hold?x.dur+"초":x.reps+"회"} × ${x.sets}세트</span>
       </div>
+      <div style="margin:6px 0 10px">${homeFig(x.id, 260)}</div>
       <ol class="muted" style="font-size:13px;padding-left:18px;margin:0">
         ${x.steps.map(s=>`<li style="margin-bottom:4px">${s}</li>`).join("")}
       </ol></div>`).join("") +
