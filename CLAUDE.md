@@ -171,12 +171,19 @@ else if (smm < 0 && w >= 0)      // 체중 유지인데 근육↓ → 분홍 경
 
 ## 5. Supabase 동기화
 
-프로젝트는 생성되어 있으나 **사용자가 아직 로그인·동기화를 완료하지 않았다.**
+**10/8 23:17 동기화 완료.** 폰 Safari에서 비밀번호 로그인 → 7/9~10/8 기록 75일치가 `dawnsix_logs`에 저장됨.
 
 ```
 URL: https://izszsqhexxzyjokwgehv.supabase.co
-계정: eunm2roh@gmail.com (Magic Link)
+계정: eunm2roh@gmail.com (비밀번호 로그인 — 비밀번호는 사용자만 앎)
 ```
+
+**다른 기기에서 쓰려면:** 설정 탭 › URL·key 저장 › 이메일·비밀번호로 로그인. 기록은 날짜 단위로 병합(`{...remote, ...local}`)되므로 빈 기기에서 로그인해도 클라우드 기록이 지워지지 않는다.
+**비밀번호 분실 시:** 사용자가 대시보드 SQL Editor에서 아래 SQL로 재설정 (결과는 항상 "Success. No rows returned").
+**주의:** 무료 플랜은 7일 무요청 시 프로젝트가 자동 일시정지 → 대시보드나 MCP `restore_project`로 복구.
+**사용자에게 Safari "방문 기록 및 웹 사이트 데이터 지우기"를 권하지 말 것** — 로컬 기록이 날아간다. 옛 화면이 보이면 주소를 `dawnsix.vercel.app/?v=N`로 직접 입력.
+
+### 경과 기록
 
 - 테이블 `public.dawnsix_logs` 생성 완료 (user_id PK, data jsonb, updated_at). RLS 켜져 있고 본인 행만 select/insert/update.
 - Redirect URL에 `https://dawnsix.vercel.app/**` 등록 완료.
@@ -227,7 +234,7 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 
 ## 8. 남은 작업 후보
 
-- [ ] Supabase 동기화 재개 (폰에서 먼저 로그인)
+- [x] Supabase 동기화 재개 — 10/8 비밀번호 로그인으로 완료 (75일치 업로드)
 - [x] 7.5mg 구간 요약 분리 — 추이 탭 마운자로 카드에 **용량별 구간** 비교 추가 (`rangeStats(from,to)`, 입력 중인 오늘 제외)
 - [ ] 다음 인바디는 **3~4주 간격**으로 (10월 말 ~ 11월 초). 8일 간격은 오차에 묻힌다.
 - [x] 운동 복귀 후 무게 재조정 — 레그프레스는 기존 `recommend()` 규칙대로 단계 상승(50→55→60). 랫풀다운·체스트프레스·레그컬/익스텐션은 `HOLD`(~10/20) 동안 권장 무게를 올리지 않음. **10/20 이후 `HOLD`는 자동으로 풀린다.**
