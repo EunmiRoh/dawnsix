@@ -40,7 +40,8 @@ log["2026-10-07"] = {
   cycle:   { start: false, end: false },    // 생리 시작/종료
   session: { am: false, pm: false },        // 아침/저녁 운동 (둘 다 가능)
   shot:    { done: false, dose: null },     // 마운자로 주사 + 용량(mg)
-  inbody:  null                             // { w, smm, fat, pct, est? }
+  inbody:  null,                            // { w, smm, fat, pct, est? }
+  labs:    null                             // 피검사 { 항목id: 수치 } — LAB_GROUPS 참고
 };
 ```
 
@@ -58,6 +59,7 @@ r.cycle   = r.cycle   || { start:false, end:false };
 r.session = r.session || { am:false, pm:false };
 r.shot    = r.shot    || { done:false, dose:null };
 if(r.inbody === undefined) r.inbody = null;
+if(r.labs === undefined) r.labs = null;
 ```
 
 ### 인바디 시드 메커니즘
@@ -157,6 +159,14 @@ const days = Object.keys(log)
 - 누적: 기준일부터 N일 · 주 평균 ±N.NNkg. **기본 기준일 = 최근 체중 기록 7일 전**(그날 기록이 없으면 그 이전 가장 가까운 날, 없으면 첫 기록). 사용자 요청으로 1주 단위 비교가 기본.
 - 인바디: 기본 기준일 = 직전 측정 (최근 측정 바로 앞). 바꾸지 말 것.
 - 인바디: 기준일 대비 4개 지표 변화 + 해석 배너
+
+### 피검사 카드 (`renderLabs`)
+
+- 항목 카탈로그 `LAB_GROUPS`(근육·영양 / 빈혈·혈구 / 혈당 / 지질 / 간 / 갑상선 / 호르몬 / 전해질·기타, 39항목). 참고치는 10/1 검사지 기준, `lo`/`hi` 중 null은 한쪽만 의미.
+- 표시: 최근 검사의 **참고치 벗어난 항목**(↑/↓, 로즈) → **근육·영양 지표**(알부민·총단백·크레아티닌·CK·BUN·eGFR) → 전체 결과(접힘) → 입력/수정 폼. 이전 검사가 있으면 각 항목에 이전 값과 차이.
+- 10/1 결과는 `seedLabs()`로 시드 (`cfg.labSeed === 1`, 인바디 시드와 같은 방식, `boot()`에서 `seedInbody()` 다음). 다음 검사 결과를 코드에 넣을 땐 seed에 날짜 추가 + 버전 올리기.
+- 10/1 검사에서 참고치 밖: 헤모글로빈 11.9↓, LDL 152↑, 코티솔 4.27↓(오전 기준 — 채혈 시간 확인 필요), 프로락틴 27.1↑. **IGF-1은 125.8** (176.6은 "스테로이드화합물" 값 — 혼동 주의).
+- 피검사만 있는 날은 인바디처럼 추이 그래프 날짜에서 제외 (`isEmptyDay(r,false)`).
 
 ### 인바디 해석 배너 분기
 
