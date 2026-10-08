@@ -282,7 +282,10 @@
       <div style="font-weight:600;margin-bottom:6px">로그인</div>
       <label>이메일</label>
       <input id="email" type="email" placeholder="you@example.com" style="width:100%">
-      <button id="login" class="primary" style="width:100%;margin-top:12px">로그인 링크 받기</button>
+      <button id="login" class="primary" style="width:100%;margin-top:12px">로그인 메일 받기</button>
+      <label style="margin-top:14px;display:block">메일로 온 인증 코드</label>
+      <input id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="숫자 6자리" style="width:100%">
+      <button id="otpgo" class="primary" style="width:100%;margin-top:12px">코드로 로그인</button>
       <p class="muted" id="authmsg" style="margin:10px 0 0"></p>
     </div>
 
@@ -1781,33 +1784,79 @@ function renderHistory(days, todayKey){
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
 
-  el.innerHTML = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>` + weeks.map(w => {
-    const end = addDays(w.start, 6);
-    const si = shotInfo(w.days[0]);
-    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
-    const done = w.days.filter(k => k !== todayKey);            // 진행 중인 오늘은 평균에서 뺀다
-    const ps = done.map(k => proteinOf(log[k]));
+  // 기간 요약 — 단백질 0g(기록 안 한 날)과 진행 중인 오늘은 평균에서 뺀다
+  const summary = ks => {
+    const ps = ks.filter(k => k !== todayKey).map(k => proteinOf(log[k])).filter(g => g > 0);
     const avgP = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
     const hit = ps.filter(p => p >= GOAL).length;
-    const gymN = w.days.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
-    const st = w.days.filter(k => log[k]?.stool?.type);
+    const gymN = ks.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
+    const st = ks.filter(k => log[k]?.stool?.type);
     const stOK = st.filter(k => log[k].stool.type === "normal").length;
-    const ws = w.days.filter(k => log[k]?.bodyWeight).slice().reverse();
+    const ws = ks.filter(k => log[k]?.bodyWeight).slice().reverse();
     const s = [];
     if(avgP !== null) s.push(`단백질 평균 <b style="color:${HC.prot.fg}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
     s.push(`운동 <b style="color:${HC.gym.fg}">${gymN}회</b>`);
     if(st.length) s.push(`배변 정상 <b style="color:${HC.stool.fg}">${stOK}/${st.length}</b>`);
     if(ws.length > 1) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}</b>`);
     else if(ws.length) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}</b>`);
+    return s.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ");
+  };
+  const arrow = open => `<span style="color:var(--dim);font-size:16px">${open ? "▾" : "▸"}</span>`;
+
+  const weekCard = w => {
+    const end = addDays(w.start, 6);
+    const si = shotInfo(w.days[0]);
+    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
     const open = histOpen.has(w.start);
     return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
         <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
-        <span style="color:var(--dim);font-size:16px">${open ? "▾" : "▸"}</span></div>
-        <div class="s">${s.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ")}</div></button>
+        ${arrow(open)}</div>
+        <div class="s">${summary(w.days)}</div></button>
       ${open ? `<div class="wkd">${w.days.map(dayRow).join("")}</div>` : ""}</div>`;
-  }).join("");
+  };
 
-  el.querySelectorAll(".wkh").forEach(b => b.onclick = () => {
+  // 최근 한 달은 주 단위로 바로 보이고, 그 이전은 연 → 월로 접어 둔다 (주가 쌓여도 목록이 길어지지 않게)
+  const cutoff = addDays(todayKey, -28);                      // 이번 주 포함 최근 4주
+  const recent = weeks.filter(w => w.start >  cutoff);
+  const older  = weeks.filter(w => w.start <= cutoff);
+  const years = [];
+  older.forEach(w => {
+    const y = w.start.slice(0,4), m = w.start.slice(0,7);
+    if(!years.length || years[years.length-1].y !== y) years.push({ y, months:[] });
+    const ms = years[years.length-1].months;
+    if(!ms.length || ms[ms.length-1].m !== m) ms.push({ m, weeks:[] });
+    ms[ms.length-1].weeks.push(w);
+  });
+  const allDays = ws => ws.flatMap(w => w.days);
+
+  let html = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>`;
+  html += `<div class="muted" style="font-size:12px;margin:0 0 8px">최근 한 달</div>` + recent.map(weekCard).join("");
+  if(years.length){
+    html += `<div class="muted" style="font-size:12px;margin:18px 0 8px">지난 기록</div>`;
+    html += years.map(Y => {
+      const yOpen = histOpen.has("y" + Y.y);
+      const nW = Y.months.reduce((a,M) => a + M.weeks.length, 0);
+      return `<div class="card wk"><button class="wkh grp" data-grp="y${Y.y}">
+          <div class="t"><b style="font-size:15px">${Y.y}년<span class="muted" style="font-size:12px;font-weight:400"> · ${Y.months.length}개월 · ${nW}주</span></b>${arrow(yOpen)}</div>
+        </button>
+        ${yOpen ? `<div class="wkd" style="padding:8px 10px 2px">` + Y.months.map(M => {
+          const mOpen = histOpen.has("m" + M.m);
+          return `<div class="card wk" style="margin-bottom:8px;box-shadow:none"><button class="wkh grp" data-grp="m${M.m}">
+              <div class="t"><b style="font-size:14px">${parseInt(M.m.slice(5))}월<span class="muted" style="font-size:12px;font-weight:400"> · ${M.weeks.length}주</span></b>${arrow(mOpen)}</div>
+              <div class="s">${summary(allDays(M.weeks))}</div></button>
+            ${mOpen ? `<div style="padding:4px 8px 0">${M.weeks.map(weekCard).join("")}</div>` : ""}</div>`;
+        }).join("") + `</div>` : ""}</div>`;
+    }).join("");
+  }
+  el.innerHTML = html;
+
+  el.querySelectorAll(".grp").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    const k = b.dataset.grp;
+    histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
+    renderHistory(days, todayKey);
+  });
+  el.querySelectorAll(".wkh:not(.grp)").forEach(b => b.onclick = () => {
     const k = b.dataset.wk;
     histOpen.has(k) ? histOpen.delete(k) : histOpen.add(k);
     renderHistory(days, todayKey);
@@ -2310,7 +2359,7 @@ function updateAuth(){
   const msg = document.getElementById("authmsg");
   if(!sb){ setSync("로컬 저장"); msg.textContent = "URL과 key를 넣고 연결하세요."; return; }
   if(user){ setSync("클라우드 저장됨"); msg.textContent = `${user.email} 로그인됨`; }
-  else { setSync("연결됨 · 로그인 필요"); msg.textContent = authNotice || "이메일로 로그인 링크를 받으세요."; }
+  else { setSync("연결됨 · 로그인 필요"); msg.textContent = authNotice || "로그인 메일을 받아 메일 속 숫자 코드를 입력하세요."; }
   msg.style.color = (!user && authNotice) ? "var(--rose)" : "";
 }
 async function pull(){
@@ -2348,7 +2397,8 @@ document.getElementById("login").onclick = async () => {
   msg0.textContent = "메일 보내는 중…";
   const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin + location.pathname } });
   if(error){ btn.disabled = false; msg0.textContent = "오류: " + error.message; return; }
-  msg0.textContent = "메일함을 확인하세요. 링크는 지금 이 브라우저에서 열어야 로그인됩니다. (다른 앱·브라우저로 열리면 링크를 길게 눌러 복사 → 이 브라우저 주소창에 붙여넣기)";
+  cfg = { ...cfg, email }; localStorage.setItem(CKEY, JSON.stringify(cfg));
+  msg0.textContent = "메일함을 확인하세요. 메일의 숫자 코드를 아래 칸에 넣고 '코드로 로그인'을 누르세요. (링크는 미리보기만 해도 사용 처리돼 실패할 수 있습니다)";
   let left = 60;
   const tick = () => {
     if(left <= 0){ btn.disabled = false; btn.textContent = "로그인 링크 다시 받기"; return; }
@@ -2358,6 +2408,24 @@ document.getElementById("login").onclick = async () => {
 };
 
 let authNotice = null;
+// 메일 인증 코드로 로그인 — 링크는 메일·메신저 미리보기가 먼저 열어 버려 1회용 토큰이 소진되는 일이 잦다
+document.getElementById("otpgo").onclick = async () => {
+  const msg = document.getElementById("authmsg");
+  if(!sb){ msg.textContent = "먼저 위에서 URL과 key를 저장하고 연결하세요."; return; }
+  const email = document.getElementById("email").value.trim() || cfg.email || "";
+  const code = document.getElementById("otp").value.replace(/\D/g, "");
+  if(!email){ msg.textContent = "이메일을 입력하세요."; return; }
+  if(code.length < 6){ msg.textContent = "메일에 온 숫자 코드를 입력하세요."; return; }
+  const btn = document.getElementById("otpgo");
+  btn.disabled = true; msg.textContent = "확인 중…";
+  const { error } = await sb.auth.verifyOtp({ email, token: code, type: "email" });
+  btn.disabled = false;
+  if(error){ msg.style.color = "var(--rose)"; msg.textContent = "코드가 맞지 않거나 만료됐습니다. 가장 최근 메일의 코드인지 확인하세요. (" + error.message + ")"; return; }
+  authNotice = null; msg.style.color = "";
+  document.getElementById("otp").value = "";
+};
+if(cfg.email) document.getElementById("email").value = cfg.email;
+
 // 로그인 링크로 들어왔을 때의 상태 — supabase가 주소를 지우기 전에 읽어둔다
 const authLanding = (() => {
   const h = new URLSearchParams(location.hash.slice(1)), q = new URLSearchParams(location.search);
@@ -2371,7 +2439,7 @@ function showAuthLanding(){
   const msg = document.getElementById("authmsg");
   let t = null;
   if(authLanding.error)
-    t = "로그인 링크가 만료됐거나 이미 사용됐습니다. 가장 최근에 받은 메일의 링크를 쓰거나, 링크를 다시 받으세요.";
+    t = "로그인 링크가 만료됐거나 이미 사용됐습니다 (메일·메신저 미리보기가 먼저 열면 이렇게 됩니다). 메일 속 숫자 코드를 아래 칸에 넣어 로그인하세요.";
   else if(!cfg.url || !cfg.key)
     t = "로그인 링크가 기록이 없는 브라우저에서 열렸습니다. 기록이 있는 브라우저(예: Safari)에서 링크를 다시 열어주세요. 링크를 길게 눌러 복사 → 그 브라우저 주소창에 붙여넣으면 됩니다.";
   if(!t) return;
