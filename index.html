@@ -1689,9 +1689,7 @@ const HC = {
   gym:   { fg:"#1E9E63", bg:"#E3F8EE", solid:"#2BBF7A" },   // 운동 — 민트 초록
   prot:  { fg:"#E8603C", bg:"#FFEEE8", solid:"#FF7A59" },   // 단백질 — 코랄
   stool: { fg:"#1593C7", bg:"#E2F5FD", solid:"#2BADE3" },   // 배변 — 하늘
-  shot:  { fg:"#4F5FE8", bg:"#ECEEFE", solid:"#5B6CF0" },   // 주사 — 남색
-  ib:    { fg:"#8B4FE8", bg:"#F3ECFE", solid:"#9B5CF6" },   // 인바디 — 보라
-  cycle: { fg:"#DB4A8B", bg:"#FDECF4", solid:"#EC5F9E" }    // 생리 — 분홍
+  etc:   { fg:"#6B7088", bg:"#EEF0F5", solid:"#8E93A6" }    // 주사·인바디·생리 — 회색으로 차분하게
 };
 const chip = (t, cat, state) => {
   const c = HC[cat];
@@ -1733,10 +1731,10 @@ function renderHistory(days, todayKey){
       const t = r.stool.type;
       c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""), "stool", t==="normal" ? null : "weak"));
     }
-    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "shot"));
-    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "ib"));
-    if(r.cycle?.start) c.push(chip("생리 시작", "cycle"));
-    if(r.cycle?.end) c.push(chip("생리 종료", "cycle"));
+    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "etc"));
+    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "etc"));
+    if(r.cycle?.start) c.push(chip("생리 시작", "etc"));
+    if(r.cycle?.end) c.push(chip("생리 종료", "etc"));
     if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px">체중 ${r.bodyWeight}</span>`);
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
