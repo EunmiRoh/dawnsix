@@ -486,6 +486,16 @@ const sessionCount = r => (r && r.session) ? ((r.session.am?1:0) + (r.session.pm
 /* ─────────── 배변 ─────────── */
 const STOOL = [["none","없음","var(--dim)"],["hard","딱딱","var(--rose)"],["normal","정상","var(--dawn)"],["loose","무름","var(--rose)"]];
 const STOOL_LABEL = Object.fromEntries(STOOL.map(([id,l])=>[id,l]));
+
+// 항목마다 고유 색 (기록 칩·추이 그래프 공통). 꽉 찬 = 목표 달성, 점선 = 아쉬운 날
+const HC = {
+  gym:   { fg:"#3D8FC4", bg:"#E4F2FB", solid:"#6BB3E0" },   // 운동 — 하늘
+  prot:  { fg:"#C25A86", bg:"#F9EDF2", solid:"#D2799F", light:"#EDBDD2" },   // 단백질 — 로즈
+  stool: { fg:"#3E8E77", bg:"#E4F3EE", solid:"#5FB39A" },   // 배변 — 세이지
+  shot:  { fg:"#D9775A", bg:"#FDEEE8", solid:"#F0997C" },   // 주사 — 피치
+  ib:    { fg:"#3A46B8", bg:"#E9ECFB", solid:"#4B5CE8" },   // 인바디 — 남색
+  cycle: { fg:"#6A5FC1", bg:"#EFEDFB", solid:"#8A7FE0" }    // 생리 — 라벤더
+};
 // 정상 또는 무름이면서 양이 적지 않을 때만 "제대로 본 날"로 인정 — 딱딱·찔끔은 카운터를 끊지 않는다
 const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="normal"||st.type==="loose") && st.amount!=="small"); };
 /* ─────────── 인바디 ─────────── */
@@ -1347,11 +1357,27 @@ function lineChart(points, unit, marks){
   const H=CH.h, P=CH.pad;
   const slots = (points.slots || points.length);
   const W = chartW(slots);
-  const vals = points.map(p=>p.v), mn = Math.min(...vals)-.6, mx = Math.max(...vals)+.6, span = (mx-mn)||1;
+  // 세로 범위를 최소 4kg로 잡아 하루 0.몇 kg 변동이 급경사로 보이지 않게 한다
+  const vals = points.map(p=>p.v), lo = Math.min(...vals), hi = Math.max(...vals);
+  const half = Math.max((hi-lo)/2 + .6, 2), mid = (hi+lo)/2;
+  const mn = mid-half, mx = mid+half, span = mx-mn;
   const pts = points.map((p,i)=>({
     x: P + ((p.i === undefined ? i : p.i))*CH.day + CH.day/2,
     y: H-26 - ((p.v-mn)/span)*(H-50), ...p }));
-  const path = pts.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  // 단조 3차 보간(Fritsch–Carlson) — 점 사이를 부드럽게 잇되 실제 값보다 튀어나가지 않는다
+  const n = pts.length, dx = [], m = [], t = [];
+  for(let i=0;i<n-1;i++){ dx[i] = pts[i+1].x-pts[i].x; m[i] = (pts[i+1].y-pts[i].y)/dx[i]; }
+  for(let i=0;i<n;i++){
+    if(i===0) t[i] = n>1 ? m[0] : 0;
+    else if(i===n-1) t[i] = m[n-2];
+    else t[i] = (m[i-1]*m[i] <= 0) ? 0 : 3*(dx[i-1]+dx[i]) / ((2*dx[i]+dx[i-1])/m[i-1] + (dx[i]+2*dx[i-1])/m[i]);
+  }
+  const f = v => v.toFixed(1);
+  let path = `M${f(pts[0].x)},${f(pts[0].y)}`;
+  for(let i=0;i<n-1;i++){
+    const a = pts[i], b = pts[i+1], h = dx[i]/3;
+    path += ` C${f(a.x+h)},${f(a.y+t[i]*h)} ${f(b.x-h)},${f(b.y-t[i+1]*h)} ${f(b.x)},${f(b.y)}`;
+  }
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
     <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
     <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
@@ -1362,7 +1388,7 @@ function lineChart(points, unit, marks){
       return `<line x1="${p.x}" y1="18" x2="${p.x}" y2="${H-26}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3"/>
         <text x="${p.x}" y="14" font-size="8" fill="${col}" text-anchor="middle">${lb}</text>`;
     }).join("")}
-    <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2"/>
+    <path d="${path}" fill="none" stroke="var(--dawn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--dawn)"/>
       <text x="${p.x}" y="${p.y-8}" font-size="9" fill="var(--mist)" text-anchor="middle">${p.v.toFixed(1)}</text>
       <text x="${p.x}" y="${H-12}" font-size="9" fill="var(--dim)" text-anchor="middle">${p.lab}</text>`).join("")}
@@ -1376,10 +1402,10 @@ function barChart(points){
   const bw = CH.day, gy = H-26-(GOAL/top)*(H-50);
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
     <line x1="${P}" y1="${H-26}" x2="${W-CH.right}" y2="${H-26}" stroke="var(--line)"/>
-    <line x1="${P}" y1="${gy}" x2="${W-CH.right}" y2="${gy}" stroke="var(--sage)" stroke-dasharray="3 3"/>
-    <text x="2" y="${gy+3}" font-size="9" fill="var(--sage)">${GOAL}</text>
+    <line x1="${P}" y1="${gy}" x2="${W-CH.right}" y2="${gy}" stroke="${HC.prot.fg}" stroke-dasharray="3 3"/>
+    <text x="2" y="${gy+3}" font-size="9" fill="${HC.prot.fg}">${GOAL}</text>
     ${points.map((p,i)=>{ const h=(p.v/top)*(H-50); return `
-      <rect x="${P+i*bw+bw*.15}" y="${H-26-h}" width="${bw*.7}" height="${Math.max(h,0)}" rx="2" fill="${p.v>=GOAL?"var(--sage)":"var(--rose)"}"/>
+      <rect x="${P+i*bw+bw*.15}" y="${H-26-h}" width="${bw*.7}" height="${Math.max(h,0)}" rx="2" fill="${p.v>=GOAL?HC.prot.solid:HC.prot.light}"/>
       <text x="${P+i*bw+bw/2}" y="${H-26-h-4}" font-size="8" fill="var(--mist)" text-anchor="middle">${p.v||""}</text>
       <text x="${P+i*bw+bw/2}" y="${H-12}" font-size="8" fill="var(--dim)" text-anchor="middle">${p.lab}</text>`;}).join("")}
   </svg>`;
@@ -1448,29 +1474,29 @@ function renderTrend(){
   const wpts = view.map((k,i)=>({ k, i, v:parseFloat(log[k]?.bodyWeight), lab:lab(k) })).filter(x=>!isNaN(x.v));
   wpts.slots = view.length;
   document.getElementById("wchart").innerHTML = wrapScroll(lineChart(wpts, null, [
-    ...cycleStarts().map(k => ({ k, color:"var(--rose)", label:"생리" })),
-    ...shotDays().map(k => ({ k, color:"var(--sage)", label:"주사" }))
+    ...cycleStarts().map(k => ({ k, color:HC.cycle.solid, label:"생리" })),
+    ...shotDays().map(k => ({ k, color:HC.shot.solid, label:"주사" }))
   ]));
   document.getElementById("pchart").innerHTML =
     wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)}))));
 
   const sdays = view;
-  const SCOL = { none:"var(--panel2)", hard:"var(--rose)", normal:"var(--dawn)", loose:"var(--rosetint)" };
+  const SCOL = { none:"var(--panel2)", hard:HC.stool.bg, normal:HC.stool.solid, loose:"transparent" };
   const sgap = daysSinceStool(keyOf(new Date()));
   document.getElementById("schart").innerHTML = sdays.length
     ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(sdays.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + sdays.map(k=>{
         const t = log[k]?.stool?.type, sm = log[k]?.stool?.amount==="small";
         const bg = t ? SCOL[t] : "transparent";
-        const bd = t==="loose" ? "var(--rose)" : (t ? bg : "var(--line)");
+        const bd = (t==="hard" || t==="loose") ? `1.5px dashed ${HC.stool.fg}` : `1.5px solid ${t ? bg : "var(--line)"}`;
         return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
-          <div style="height:26px;border-radius:7px;background:${bg};border:1.5px solid ${bd}"></div>
+          <div style="height:26px;border-radius:7px;background:${bg};border:${bd}"></div>
           <div class="muted" style="font-size:9px;margin-top:4px">${lab(k)}</div>
-          <div class="muted" style="font-size:9px;color:${sm?"var(--rose)":"transparent"}">적음</div></div>`;
+          <div class="muted" style="font-size:9px;color:${sm?HC.stool.fg:"transparent"}">적음</div></div>`;
       }).join("") + `</div></div>
       <div class="muted" style="font-size:11px;margin-top:10px">
-        <span style="color:var(--dawn)">■</span> 정상 &nbsp;
-        <span style="color:var(--rose)">■</span> 딱딱 &nbsp;
-        <span style="color:var(--rose)">□</span> 무름 &nbsp;
+        <span style="color:${HC.stool.solid}">■</span> 정상 &nbsp;
+        <span style="color:${HC.stool.fg}">▣</span> 딱딱 &nbsp;
+        <span style="color:${HC.stool.fg}">□</span> 무름 &nbsp;
         <span style="color:var(--dim)">■</span> 없음</div>
       <div class="muted" style="font-size:12px;margin-top:8px">${sgap===null?"제대로 본 날 기록 없음":sgap===0?"오늘 정상":`마지막 정상 배변 후 ${sgap}일`}</div>`
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
@@ -1671,7 +1697,7 @@ function renderTrend(){
             const under = x.avg && x.avg < 60;
             return `<div style="flex:1;text-align:center">
               <div style="font-size:9px;color:var(--dim);height:12px">${x.avg ?? ""}</div>
-              <div style="height:${h}px;border-radius:5px 5px 0 0;background:${under?"var(--rose)":"var(--dawn)"}"></div>
+              <div style="height:${h}px;border-radius:5px 5px 0 0;background:${under?HC.prot.light:HC.prot.solid}"></div>
               <div style="font-size:9px;color:var(--dim);margin-top:3px">${x.d}일</div></div>`;
           }).join("") + `</div>
         <div class="muted" style="font-size:11px;margin-top:8px">0일차 = 주사 맞은 날. 기록이 4주쯤 쌓이면 본인 패턴이 보입니다.</div>`;
@@ -1684,9 +1710,14 @@ function renderTrend(){
 
 // 기록 목록 — 주사 요일 기준 주 단위로 묶고, 최신 주만 펼친다
 const histOpen = new Set();
-const HC = { good:"background:var(--tint);color:var(--sage)", bad:"background:var(--rosetint);color:var(--rose)",
-             warn:"background:#FBF0E4;color:#B9772E", info:"background:var(--tint);color:var(--dawn)" };
-const chip = (t, tone) => `<span class="hc" style="${tone ? HC[tone] : ""}">${t}</span>`;
+const chip = (t, cat, state) => {
+  const c = HC[cat];
+  if(!c) return `<span class="hc">${t}</span>`;
+  const st = state === "full" ? `background:${c.solid};color:#fff;font-weight:600`
+           : state === "weak" ? `background:transparent;color:${c.fg};border:1px dashed ${c.fg};padding:0 7px`
+           : `background:${c.bg};color:${c.fg}`;
+  return `<span class="hc" style="${st}">${t}</span>`;
+};
 
 function renderHistory(days, todayKey){
   const el = document.getElementById("history");
@@ -1708,27 +1739,26 @@ function renderHistory(days, todayKey){
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
     const c = [];
     const sl = sessionLabel(r);
-    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "good"));
-    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "good"));
-    if(r.yoga?.done) c.push(chip("요가", "good"));
-    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "good"));
+    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "gym"));
+    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "gym"));
+    if(r.yoga?.done) c.push(chip("요가", "gym"));
+    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "gym"));
     const p = proteinOf(r);
     if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
-    else c.push(chip(`단백질 ${p}g`, p >= GOAL ? "good" : p < 60 ? "bad" : null));
+    else c.push(chip(`단백질 ${p}g`, "prot", p >= GOAL ? "full" : p < 60 ? "weak" : null));
     if(r.stool?.type){
       const t = r.stool.type;
-      c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""),
-        t==="normal" ? "good" : t==="hard" ? "warn" : t==="loose" ? "bad" : null));
+      c.push(chip("배변 " + STOOL_LABEL[t] + (r.stool.amount==="small" ? "·적음" : ""), "stool", t==="normal" ? null : "weak"));
     }
-    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "info"));
-    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "info"));
-    if(r.cycle?.start) c.push(chip("생리 시작", "bad"));
-    if(r.cycle?.end) c.push(chip("생리 종료", "bad"));
-    if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px">체중 ${r.bodyWeight}</span>`);
+    if(r.shot?.done) c.push(chip(`주사 ${r.shot.dose}mg`, "shot"));
+    if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "ib"));
+    if(r.cycle?.start) c.push(chip("생리 시작", "cycle"));
+    if(r.cycle?.end) c.push(chip("생리 종료", "cycle"));
+    if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px;color:var(--mist);font-weight:700">체중 ${r.bodyWeight}</span>`);
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
 
-  el.innerHTML = weeks.map(w => {
+  el.innerHTML = `<div class="muted" style="font-size:11px;margin:-4px 0 10px">${chip("꽉 찬 칩","prot","full")} 목표 달성 · ${chip("점선 칩","prot","weak")} 아쉬운 날</div>` + weeks.map(w => {
     const end = addDays(w.start, 6);
     const si = shotInfo(w.days[0]);
     const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
@@ -1741,11 +1771,11 @@ function renderHistory(days, todayKey){
     const stOK = st.filter(k => log[k].stool.type === "normal").length;
     const ws = w.days.filter(k => log[k]?.bodyWeight).slice().reverse();
     const s = [];
-    if(avgP !== null) s.push(`단백질 평균 <b style="color:${avgP>=GOAL?"var(--sage)":avgP<60?"var(--rose)":"var(--mist)"}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
-    s.push(`운동 ${gymN}회`);
-    if(st.length) s.push(`배변 정상 ${stOK}/${st.length}`);
-    if(ws.length > 1) s.push(`체중 ${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}`);
-    else if(ws.length) s.push(`체중 ${log[ws[0]].bodyWeight}`);
+    if(avgP !== null) s.push(`단백질 평균 <b style="color:${HC.prot.fg}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
+    s.push(`운동 <b style="color:${HC.gym.fg}">${gymN}회</b>`);
+    if(st.length) s.push(`배변 정상 <b style="color:${HC.stool.fg}">${stOK}/${st.length}</b>`);
+    if(ws.length > 1) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}</b>`);
+    else if(ws.length) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}</b>`);
     const open = histOpen.has(w.start);
     return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
         <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
