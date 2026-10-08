@@ -186,7 +186,9 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 - 대응: 로그인 버튼 전송 중·후 60초 잠금, 링크가 설정 없는 브라우저에서 열리거나 만료되면 설정 탭에 안내(`showAuthLanding`, `authNotice`). 부팅 시 `connect()`는 `store.load()` 이후에 실행 (먼저 하면 로컬 로드가 클라우드 병합 결과를 덮음).
 - 키는 legacy anon(eyJ…)·publishable(sb_publishable_…) 둘 다 유효.
 - **링크 로그인은 불안정:** 1회용 토큰이라 메일·메신저·채팅앱의 **링크 미리보기**가 먼저 열면 소진된다 (10/8 13:17 실제 발생 — verify 성공 로그는 있는데 앱의 `/auth/v1/user` 요청이 없었음). → **이메일 OTP 코드 로그인** 추가 (`#otp`, `#otpgo`, `sb.auth.verifyOtp({email, token, type:"email"})`). 이메일은 `cfg.email`에 저장해 다음에 자동 채움.
-- **코드가 메일에 나오려면** Supabase 대시보드 › Authentication › Emails › **Magic Link** 템플릿에 `{{ .Token }}`이 있어야 한다 (기본 템플릿엔 링크만 있음). MCP로는 템플릿 수정 불가 → 사용자가 대시보드에서 변경.
+- **무료 플랜은 커스텀 SMTP 없이 메일 템플릿 수정 불가** (대시보드에서 Save 잠김) → 기본 메일엔 링크만 있고 코드가 없다.
+- 그래서 같은 칸에 **메일 링크 붙여넣기**를 지원: URL의 `token`(=token_hash)·`type`을 꺼내 `sb.auth.verifyOtp({ token_hash, type })`. 링크를 브라우저로 열지 않으니 Chrome·인앱 브라우저로 새는 문제가 없다. 숫자만 넣으면 기존 코드 로그인 경로(SMTP·템플릿 설정 후 사용 가능).
+- 사용자 안내: 메일 링크는 **누르지 말고 길게 눌러 복사** → 설정 탭 칸에 붙여넣기.
 
 ---
 
