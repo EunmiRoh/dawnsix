@@ -1754,7 +1754,7 @@ function renderHistory(days, todayKey){
     if(r.inbody) c.push(chip(`인바디 근육 ${r.inbody.smm}`, "ib"));
     if(r.cycle?.start) c.push(chip("생리 시작", "cycle"));
     if(r.cycle?.end) c.push(chip("생리 종료", "cycle"));
-    if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px">체중 ${r.bodyWeight}</span>`);
+    if(r.bodyWeight) c.push(`<span class="hc" style="background:none;padding-left:2px;color:var(--mist);font-weight:700">체중 ${r.bodyWeight}</span>`);
     return `<div class="hday"><b>${fmtKey(k)} (${DAY[dow]})</b><div>${c.join("")}</div></div>`;
   };
 
@@ -1774,8 +1774,8 @@ function renderHistory(days, todayKey){
     if(avgP !== null) s.push(`단백질 평균 <b style="color:${HC.prot.fg}">${avgP}g</b> (목표 ${hit}/${ps.length}일)`);
     s.push(`운동 <b style="color:${HC.gym.fg}">${gymN}회</b>`);
     if(st.length) s.push(`배변 정상 <b style="color:${HC.stool.fg}">${stOK}/${st.length}</b>`);
-    if(ws.length > 1) s.push(`체중 ${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}`);
-    else if(ws.length) s.push(`체중 ${log[ws[0]].bodyWeight}`);
+    if(ws.length > 1) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}→${log[ws[ws.length-1]].bodyWeight}</b>`);
+    else if(ws.length) s.push(`체중 <b style="color:var(--mist)">${log[ws[0]].bodyWeight}</b>`);
     const open = histOpen.has(w.start);
     return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
         <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
