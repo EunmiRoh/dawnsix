@@ -680,43 +680,6 @@ function seedOff(){
   if(touched) persist();
 }
 
-// 피검사 실측 — 인바디와 같은 방식으로 버전별 1회 반영, 이미 있는 날짜는 건드리지 않음
-function seedLabs(){
-  if(cfg.labSeed === 1) return;
-  const seed = { "2026-10-01": { wbc:7.01, rbc:4.52, hb:11.9, hct:37.7, mcv:83.4, mch:26.3, mchc:31.6, plt:224,
-    glu:93, a1c:5.1, tbil:0.47, ast:17, alt:16, alp:64, ggt:9, tp:6.8, alb:4.1, bun:14.3, cr:0.87, egfr:80,
-    tsh:3.35, t3:131.7, ft4:1.34, hdl:46, tg:53, ldl:152, apob:96.6, ldh:197, ck:80, amy:93,
-    na:140, cl:106, k:4.8, crp:0.07, cort:4.27, steroid:176.6, igf1:125.8, acth:10.3, prl:27.1 } };
-  let touched = false;
-  Object.keys(seed).forEach(k => {
-    if(!log[k]) log[k] = blank();
-    if(!log[k].labs){ log[k].labs = seed[k]; touched = true; }
-  });
-  cfg.labSeed = 1;
-  localStorage.setItem(CKEY, JSON.stringify(cfg));
-  if(touched) persist();
-}
-
-// 실측 기록 최초 1회만 채운다 (이미 있으면 건드리지 않음)
-function seedInbody(){
-  if(cfg.inbodySeed === 4) return;
-  const seed = {
-    "2026-07-09": { w:78.0, smm:24.0, fat:34.4, pct:44.1, est:true },   // 체지방량은 체중×체지방률 계산값
-    "2026-07-30": { w:75.9, smm:22.6, fat:34.6, pct:45.5 },
-    "2026-08-27": { w:72.7, smm:22.0, fat:32.5, pct:44.7 },
-    "2026-09-23": { w:73.0, smm:23.7, fat:29.9, pct:41.0 },
-    "2026-10-01": { w:72.3, smm:23.3, fat:29.9, pct:41.4 }
-  };
-  let touched = false;
-  Object.keys(seed).forEach(k => {
-    if(!log[k]) log[k] = blank();
-    if(!log[k].inbody){ log[k].inbody = seed[k]; touched = true; }
-  });
-  cfg.inbodySeed = 4;
-  localStorage.setItem(CKEY, JSON.stringify(cfg));
-  if(touched) persist();
-}
-
 // 직전 측정 대비 변화 + 감량 중 근육이 차지한 비율
 let ibBase = null;   // 선택한 기준일 (null이면 직전 측정)
 
@@ -2879,9 +2842,7 @@ function showAuthLanding(){
   const loaded = await store.load();
   if(loaded) log = loaded;
   resetSnap();
-  seedInbody();
-  seedLabs();
-  seedOff();
+  seedOff();   // 인바디·피검사 실측은 코드에 두지 않는다 (로그인 전 다른 사람에게 보이지 않게) — 클라우드에서 받아온다
   render();
   if(cfg.url && cfg.key && !window.supabase) setSync("라이브러리 로드 실패");
   else setSync("준비됨");
