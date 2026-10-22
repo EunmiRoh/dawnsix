@@ -346,6 +346,14 @@
       <p class="muted" id="authmsg" style="margin:10px 0 0"></p>
     </div>
 
+    <div class="card" id="autobak">
+      <div style="font-weight:600;margin-bottom:6px">자동 백업 (최근 30일)</div>
+      <p class="muted" style="margin:0 0 8px">로그인돼 있으면 하루 한 번, 그날 처음 동기화할 때의 클라우드 기록을 따로 보관합니다. 어느 기기에서 기록이 덮이거나 지워져도 날짜를 골라 되살릴 수 있어요.</p>
+      <button id="bakload" style="width:100%">백업 목록 보기</button>
+      <div id="baklist" style="margin-top:8px"></div>
+      <p class="muted" id="bakmsg" style="margin:8px 0 0"></p>
+    </div>
+
     <div class="card">
       <div style="font-weight:600;margin-bottom:6px">기록 백업 / 복원</div>
       <textarea id="raw" style="width:100%;height:130px;font-family:monospace;font-size:12px"></textarea>
@@ -668,43 +676,6 @@ function seedOff(){
     if(r && isGymDay(d) && !gymOK(r) && !r.off){ r.off = true; touched = true; }
   });
   cfg.offSeed = 1;
-  localStorage.setItem(CKEY, JSON.stringify(cfg));
-  if(touched) persist();
-}
-
-// 피검사 실측 — 인바디와 같은 방식으로 버전별 1회 반영, 이미 있는 날짜는 건드리지 않음
-function seedLabs(){
-  if(cfg.labSeed === 1) return;
-  const seed = { "2026-10-01": { wbc:7.01, rbc:4.52, hb:11.9, hct:37.7, mcv:83.4, mch:26.3, mchc:31.6, plt:224,
-    glu:93, a1c:5.1, tbil:0.47, ast:17, alt:16, alp:64, ggt:9, tp:6.8, alb:4.1, bun:14.3, cr:0.87, egfr:80,
-    tsh:3.35, t3:131.7, ft4:1.34, hdl:46, tg:53, ldl:152, apob:96.6, ldh:197, ck:80, amy:93,
-    na:140, cl:106, k:4.8, crp:0.07, cort:4.27, steroid:176.6, igf1:125.8, acth:10.3, prl:27.1 } };
-  let touched = false;
-  Object.keys(seed).forEach(k => {
-    if(!log[k]) log[k] = blank();
-    if(!log[k].labs){ log[k].labs = seed[k]; touched = true; }
-  });
-  cfg.labSeed = 1;
-  localStorage.setItem(CKEY, JSON.stringify(cfg));
-  if(touched) persist();
-}
-
-// 실측 기록 최초 1회만 채운다 (이미 있으면 건드리지 않음)
-function seedInbody(){
-  if(cfg.inbodySeed === 4) return;
-  const seed = {
-    "2026-07-09": { w:78.0, smm:24.0, fat:34.4, pct:44.1, est:true },   // 체지방량은 체중×체지방률 계산값
-    "2026-07-30": { w:75.9, smm:22.6, fat:34.6, pct:45.5 },
-    "2026-08-27": { w:72.7, smm:22.0, fat:32.5, pct:44.7 },
-    "2026-09-23": { w:73.0, smm:23.7, fat:29.9, pct:41.0 },
-    "2026-10-01": { w:72.3, smm:23.3, fat:29.9, pct:41.4 }
-  };
-  let touched = false;
-  Object.keys(seed).forEach(k => {
-    if(!log[k]) log[k] = blank();
-    if(!log[k].inbody){ log[k].inbody = seed[k]; touched = true; }
-  });
-  cfg.inbodySeed = 4;
   localStorage.setItem(CKEY, JSON.stringify(cfg));
   if(touched) persist();
 }
@@ -2707,10 +2678,61 @@ function updateAuth(){
 async function pull(){
   setSync("불러오는 중");
   const { data, error } = await sb.from("dawnsix_logs").select("data").eq("user_id", user.id).maybeSingle();
+  if(!error) autoBackup(data?.data);
   if(!error && data?.data){ log = mergeLogs(data.data, log); store.save(log); resetSnap(); render(); }
   setSync(error ? "동기화 실패 (로컬 저장됨)" : "클라우드 저장됨");
   if(!error) push();
 }
+
+/* ── 자동 백업 ──
+   클라우드 행(dawnsix_logs)은 하나뿐이라 덮이면 이력이 없다. (10/9 사고)
+   그래서 하루 한 번, 그날 처음 pull할 때 "병합 전" 클라우드 기록을 dawnsix_backups에 날짜별로 남긴다.
+   같은 날 두 번째부터는 무시(ignoreDuplicates) → 그날 아침의 깨끗한 상태가 보존된다. 30일 지난 건 DB 트리거가 지운다. */
+async function autoBackup(remote){
+  const day = keyOf(new Date());
+  if(!sb || !user || cfg.lastBackup === day) return;
+  const data = remote && Object.keys(remote).length ? remote : log;   // 클라우드가 비었으면(첫 로그인) 이 기기 기록
+  const n = Object.keys(data).filter(k => !isEmptyDay(data[k])).length;
+  if(!n) return;
+  const { error } = await sb.from("dawnsix_backups")
+    .upsert({ user_id:user.id, day, data, days_count:n }, { onConflict:"user_id,day", ignoreDuplicates:true });
+  if(!error){ cfg = { ...cfg, lastBackup: day }; localStorage.setItem(CKEY, JSON.stringify(cfg)); }
+}
+async function loadBackups(){
+  const list = document.getElementById("baklist"), msg = document.getElementById("bakmsg");
+  list.innerHTML = "";
+  if(!sb || !user){ msg.textContent = "로그인하면 자동 백업이 쌓입니다."; return; }
+  msg.textContent = "불러오는 중…";
+  const { data, error } = await sb.from("dawnsix_backups").select("day,days_count,created_at").eq("user_id", user.id).order("day", { ascending:false });
+  if(error){ msg.textContent = "불러오기 실패: " + error.message; return; }
+  if(!data.length){ msg.textContent = "아직 백업이 없습니다. 오늘 처음 동기화할 때 만들어집니다."; return; }
+  msg.textContent = "되살릴 날짜를 고르세요. 그 백업에 있는 날짜만 백업 내용으로 바꾸고, 나머지 기록은 그대로 둡니다.";
+  data.forEach(b => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,rgba(0,0,0,.08))";
+    const d = parseKey(b.day), t = new Date(b.created_at);
+    const lab = document.createElement("div"); lab.style.flex = "1";
+    lab.innerHTML = `<b>${d.getMonth()+1}/${d.getDate()}</b> <span class="muted">${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")} · ${b.days_count}일치</span>`;
+    const btn = document.createElement("button"); btn.className = "setbtn"; btn.style.flex = "0 0 auto"; btn.style.padding = "0 12px";
+    btn.textContent = "이 백업으로 복원";
+    btn.onclick = () => restoreBackup(b.day);
+    row.append(lab, btn); list.appendChild(row);
+  });
+}
+async function restoreBackup(day){
+  const msg = document.getElementById("bakmsg");
+  const d = parseKey(day);
+  if(!confirm(`${d.getMonth()+1}/${d.getDate()} 백업으로 되살릴까요?\n백업에 있는 날짜는 백업 내용으로 바뀌고, 백업 이후에 새로 생긴 날짜는 그대로 남습니다.`)) return;
+  msg.textContent = "복원 중…";
+  const { data, error } = await sb.from("dawnsix_backups").select("data").eq("user_id", user.id).eq("day", day).maybeSingle();
+  if(error || !data?.data){ msg.textContent = "복원 실패: " + (error?.message || "백업을 찾을 수 없습니다."); return; }
+  try { localStorage.setItem("dawnsix-log-prev", JSON.stringify(log)); } catch(e){}   // 복원 직전 상태 보관
+  const now = Date.now();
+  Object.keys(data.data).forEach(k => { const r = data.data[k]; if(r && !isEmptyDay(r)) log[k] = { ...r, _t: now }; });   // 최근 수정으로 찍어 다른 기기 것보다 이기게
+  await store.save(log); resetSnap(); render(); push();
+  msg.textContent = `${d.getMonth()+1}/${d.getDate()} 백업으로 복원했습니다. 다른 기기는 앱을 다시 열면 반영됩니다.`;
+}
+document.getElementById("bakload").onclick = loadBackups;
 document.getElementById("ssave").onclick = async () => {
   const msg = document.getElementById("authmsg");
   const url = document.getElementById("surl").value.trim();
@@ -2820,9 +2842,7 @@ function showAuthLanding(){
   const loaded = await store.load();
   if(loaded) log = loaded;
   resetSnap();
-  seedInbody();
-  seedLabs();
-  seedOff();
+  seedOff();   // 인바디·피검사 실측은 코드에 두지 않는다 (로그인 전 다른 사람에게 보이지 않게) — 클라우드에서 받아온다
   render();
   if(cfg.url && cfg.key && !window.supabase) setSync("라이브러리 로드 실패");
   else setSync("준비됨");
