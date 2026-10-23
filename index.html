@@ -58,10 +58,10 @@
   nav{
     position:sticky;top:0;z-index:20;background:rgba(247,248,252,.96);
     border-bottom:1px solid var(--line);display:flex;
-    padding-top:env(safe-area-inset-top);
+    padding-top:calc(env(safe-area-inset-top) + 8px);   /* 맨 위 가장자리는 iOS가 알림센터 제스처로 먼저 가져가서 잘 안 눌린다 */
     backdrop-filter:blur(10px);
   }
-  nav button{flex:1;border:none;border-radius:0;background:none;color:var(--dim);height:52px;font-size:13px;padding:0}
+  nav button{flex:1;border:none;border-radius:0;background:none;color:var(--dim);height:56px;font-size:14px;padding:0;touch-action:manipulation}
   nav button.on{color:var(--dawn);font-weight:700;box-shadow:inset 0 -2px 0 var(--dawn)}
   .hide{display:none}
   /* 추이 탭 배치 — 폰은 한 줄(.tcol을 투명하게 풀어 order로 순서 지정), PC는 두 단 */
@@ -2273,6 +2273,15 @@ function bgmOn(){
   }catch(e){}
 }
 function bgmOff(){ if(CO.beat){ clearInterval(CO.beat); CO.beat = null; } }
+// 새 iPhone은 휴식 중 음성 안내 뒤 배경음 오디오를 멈추고, 화면을 누르기 전엔 다시 켜 주지 않는다
+const bgmStuck = () => !!(CO.beat && CO.ctx && CO.ctx.state !== "running");
+["pointerdown","touchend"].forEach(ev => document.addEventListener(ev, () => {
+  if(bgmStuck()) CO.ctx.resume().catch(() => {});
+}, { passive:true }));
+setInterval(() => {
+  const el = document.getElementById("bgmhint");
+  if(el) el.classList.toggle("hide", !bgmStuck());
+}, 1000);
 
 function coachStop(){
   keepAwake(false);
@@ -2857,5 +2866,6 @@ render();
 document.addEventListener("visibilitychange", () => { if(!document.hidden && sb && user) pull(); });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
+<div id="bgmhint" class="hide" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 84px);z-index:30;background:var(--dawn);color:#fff;font-size:13px;padding:10px 16px;border-radius:20px;box-shadow:0 4px 14px rgba(31,33,54,.2);white-space:nowrap">배경음악이 멈췄어요 · 화면을 한 번 눌러주세요</div>
 </body>
 </html>
