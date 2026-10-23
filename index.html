@@ -2188,6 +2188,9 @@ const PLAN = new Proxy({}, { get:(_, id) => {
 } });
 const CALL = { leg:"무릎 90도까지", lat:"등으로 당기세요", chest:"끝까지 펴지 마세요", curl:"허리 들리지 않게" };
 const KR = ["","하나","둘","셋","넷","다섯","여섯","일곱","여덟","아홉","열","열하나","열둘"];
+// 새 iOS는 웹페이지 소리(신호음·박자)가 나면 멜론·유튜브뮤직 같은 다른 앱 음악을 멈춰 버린다.
+// "ambient"로 두면 예전처럼 섞여서 같이 나온다 (음성 안내 땐 음악이 잠깐 작아졌다 돌아옴).
+try{ if(navigator.audioSession) navigator.audioSession.type = "ambient"; }catch(e){}
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
 
 function say(t){
