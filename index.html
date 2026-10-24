@@ -256,6 +256,8 @@
       <button id="c-bgm" style="flex:1;font-size:12px;height:42px"></button>
       <button id="c-tempo" style="flex:1;font-size:12px;height:42px"></button>
     </div>
+    <button id="c-snd" style="width:100%;font-size:12px;height:42px;margin-top:8px"></button>
+    <div class="muted" id="c-diag" style="font-size:11px;margin-top:6px;text-align:center"></div>
     <p class="muted" style="font-size:12px;margin-top:14px">
       이어폰을 끼고 폰을 기구 옆에 세워두세요. 음성이 횟수를 세고 세트 사이 90초를 재줍니다.
       끝난 세트는 오늘 기록에 자동으로 체크됩니다.
@@ -2188,9 +2190,11 @@ const PLAN = new Proxy({}, { get:(_, id) => {
 } });
 const CALL = { leg:"무릎 90도까지", lat:"등으로 당기세요", chest:"끝까지 펴지 마세요", curl:"허리 들리지 않게" };
 const KR = ["","하나","둘","셋","넷","다섯","여섯","일곱","여덟","아홉","열","열하나","열둘"];
-// 새 iOS는 웹페이지 소리(신호음·박자)가 나면 멜론·유튜브뮤직 같은 다른 앱 음악을 멈춰 버린다.
-// "ambient"로 두면 예전처럼 섞여서 같이 나온다 (음성 안내 땐 음악이 잠깐 작아졌다 돌아옴).
-try{ if(navigator.audioSession) navigator.audioSession.type = "ambient"; }catch(e){}
+// 소리 방식 (iOS 오디오 세션) — 새 iPhone에서 "무음 모드 + 다른 앱 음악 + 음성·박자"가 어떻게 되는지 기기마다 달라 사용자가 골라 시험한다.
+//   auto: Safari가 알아서 / ambient: 다른 앱 음악과 섞임(무음 모드면 앱 소리 꺼짐) / playback: 무음 모드에서도 남(다른 앱 음악을 멈출 수 있음)
+const SND = [["auto","자동"],["ambient","섞기 (무음 모드면 꺼짐)"],["playback","무음 모드에서도"]];
+function applySnd(){ try{ if(navigator.audioSession) navigator.audioSession.type = cfg.soundMode || "auto"; }catch(e){} }
+applySnd();
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
 
 function say(t){
@@ -2359,7 +2363,25 @@ const bgmStuck = () => !!(CO.beat && CO.ctx && CO.ctx.state !== "running");
 setInterval(() => {
   const el = document.getElementById("bgmhint");
   if(el) el.classList.toggle("hide", !bgmStuck());
+  const d = document.getElementById("c-diag");
+  if(d && tab === "coach"){
+    const st = { running:"재생 가능", suspended:"멈춤", interrupted:"끊김", closed:"닫힘" };
+    d.textContent = `소리 상태 · 오디오 ${CO.ctx ? (st[CO.ctx.state] || CO.ctx.state) : "아직 없음"}`
+      + ` · 세션 ${navigator.audioSession ? navigator.audioSession.type : "지원 안 함"}`
+      + ` · 녹음 음성 ${Object.keys(VOICE.buf).length}/${VOICE.map ? Object.keys(VOICE.map).length : 0}`;
+  }
+  const b = document.getElementById("c-snd");
+  if(b) b.textContent = "소리 방식: " + (SND.find(x => x[0] === (cfg.soundMode || "auto")) || SND[0])[1];
 }, 1000);
+document.getElementById("c-snd").onclick = () => {
+  const i = SND.findIndex(x => x[0] === (cfg.soundMode || "auto"));
+  cfg = { ...cfg, soundMode: SND[(i + 1) % SND.length][0] };
+  localStorage.setItem(CKEY, JSON.stringify(cfg));
+  applySnd();
+  // 운동 중이 아니면 오디오를 새로 만들게 닫아 둔다 (바뀐 방식이 다음 시작부터 확실히 적용되게)
+  const idle = (CO.phase === "idle" || CO.phase === "done") && (HO.phase === "idle" || HO.phase === "done");
+  if(idle && CO.ctx){ try{ CO.ctx.close(); }catch(e){} CO.ctx = null; }
+};
 
 function coachStop(){
   keepAwake(false);
