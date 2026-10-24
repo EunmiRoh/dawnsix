@@ -257,7 +257,7 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 ## 6. 코드 수정 시 지켜야 할 것
 
 1. **음성 코치 코드를 건드리지 않는다.** 과거에 수정하다 음성이 안 나온 적 있음. 패치 후 다음 토큰 개수가 원본과 같은지 확인:
-   `speechSynthesis`(20) · `SpeechSynthesisUtterance`(1) · `AudioContext`(8) · `voice`(26) · `speak`(3) · `bgmOff`(8)  ← #33에서 `voiceBus` 추가로 voice 24→26
+   `speechSynthesis`(20) · `SpeechSynthesisUtterance`(1) · `AudioContext`(8) · `voice`(27) · `speak`(3) · `bgmOff`(8)  ← #33 `voiceBus`로 24→26, #35 부팅 시 `voiceWarm`으로 27
    - 10/24 PR #28에서 의도적으로 바뀜: 녹음 음성(`VOICE`, `sayClip`, `voiceLoad`, `OfflineAudioContext`) 추가, #27의 볼륨 0 음성 깨우기 제거. `say()`는 첫 줄에 `if(CO.voice && sayClip(t)) return;` 한 줄만 추가.
 
 7. **새 iPhone(10/23 교체) 코치 소리 대응 (PR #23~#27):** 예전 폰은 음성 안내 때 배경음(앱 박자·다른 앱 음악)을 iOS가 알아서 작게 줄였다 돌려놨는데, 새 폰은 휴식 중 약 30초 침묵 뒤 첫 안내("60초 남았습니다")에서 오디오를 통째로 끊었다.
@@ -271,6 +271,9 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
    - → **#33:** 소리 방식 기본값 = 섞기(ambient), `transient` 제거(저장돼 있으면 섞기로). 다른 앱 음악을 줄일 수 없으니 대신 **녹음 음성을 2배 + 압축기**(`voiceBus`)로 키워 음악 위로 들리게 (최대 약 0.54 → 0.80).
    - **예전 폰처럼 "음성 때 다른 앱 음악 작게"는 웹 앱으로 복구 불가** — iOS 앱(AVAudioSession `.playback` + `.mixWithOthers` + `.duckOthers`)으로 감싸야 함(Mac·Xcode 필요). 사용자에게 선택지로 제시함.
    - **10/24 #33 후:** 섞기에서 지니뮤직 + 음성 안내 동시에 나옴 ✅. 똑딱만 안 들림 → #34 박자를 더 크고 길게(최대 0.87, 0.1~0.18초, "똑"900→600Hz·"딱"1500Hz), 터치로 오디오를 새로 만들면 `VOICE.until`이 옛 시각으로 남아 박자가 0.25에 눌려 있을 수 있던 것 수정(`VOICE.ctx` 비교), 소리 상태 줄에 **박자 횟수·박자 음량** 추가
+   - **10/24 #34 후:** 똑딱 들림 ✅. 남은 문제: 지니뮤직을 틀어 둔 채 앱을 열고 **오늘 탭 "음성 코치와 함께 하기"**로 바로 시작하면 첫 안내 때 음악이 꺼지고 목소리도 옛 목소리. 원인: 그 버튼은 코치 탭을 열자마자 시작 → 녹음 음성을 받기 전 첫 안내가 `speechSynthesis`로 나감.
+   - → **#35:** `sayClip`이 목록에 있는 문장이면 받아질 때까지 기다렸다 녹음 음성으로 재생(4초 넘거나 더 새 안내가 오면 버림, `VOICE.seq`), 목록에 없는 문장만 `speechSynthesis`. 오디오가 멈춰 있어도 `speechSynthesis`로 넘기지 않음(`playClips`). 부팅 1.5초 뒤 `voiceWarm()`. `voiceLoad`는 받는 중인 조각을 같은 작업으로 기다림(`VOICE.loading[x]` = Promise — 미리 받기와 첫 안내가 겹쳐 첫 안내가 빠지던 것).
+   - 볼륨(똑딱·음성 크기)은 사용자가 써 보고 다시 이야기하기로 함.
    - 그래도 멈추면 `#bgmhint` 안내 → 화면 터치 시 오디오를 새로 만들어 복구 (#24·#26)
    - **10/24 #28 시험 결과:** 무음 모드 끄고(ambient) → 다른 앱 음악은 안 꺼지지만 녹음 음성·박자가 안 들림. 사용자는 **평소 무음 모드를 켜 두고** 음성+박자+다른 앱 음악이 같이 나오고, 음성 동안만 음악이 작아지길 원함(예전 폰 동작 복구).
    - → **#29 소리 방식 버튼**(`#c-snd`, `cfg.soundMode`: auto/ambient/playback, 기본 auto)과 **소리 상태 줄**(`#c-diag`: 오디오 상태·세션·녹음 음성 받은 수)을 코치 화면에 추가해 사용자가 직접 시험. WebKit에서 ambient는 무음 모드에 꺼지고, playback은 무음 모드에도 나지만 다른 앱 음악을 멈출 수 있다 — 웹에서 "무음 모드 무시 + 다른 앱과 섞기"를 동시에 고를 옵션은 없다.
