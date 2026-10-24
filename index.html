@@ -2950,6 +2950,30 @@ function showAuthLanding(){
   history.replaceState(null, "", location.pathname);
 }
 
+/* ─────────── 새 버전 자동 반영 ───────────
+   홈 화면 앱은 백그라운드에 두었다 다시 열면 옛 화면이 그대로 남고, 주소에 ?v=N을 붙일 수도 없다.
+   (10/24: #29·#30을 배포했는데 폰엔 옛 화면이 떠 있어 시험이 엇갈림)
+   → 열 때·다시 화면에 올라올 때 서버의 index.html을 받아 지금 실행 중인 스크립트와 다르면 새로고침.
+   운동 중이면 미루고, 1분 안에 두 번은 하지 않는다(무한 새로고침 방지). */
+async function checkUpdate(){
+  try{
+    const running = (CO.phase !== "idle" && CO.phase !== "done") || (HO.phase !== "idle" && HO.phase !== "done");
+    if(running || document.activeElement?.matches?.("input,textarea,select")) return;
+    const last = +(sessionStorage.getItem("dawnsix-upd") || 0);
+    if(Date.now() - last < 60000) return;
+    const res = await fetch(location.pathname + "?u=" + Date.now(), { cache:"no-store" });
+    if(!res.ok) return;
+    const html = await res.text();
+    const mine = [...document.scripts].filter(x => !x.src).map(x => x.textContent).sort((a, b) => b.length - a.length)[0];
+    if(!mine || html.length < 1000 || html.includes(mine)) return;
+    sessionStorage.setItem("dawnsix-upd", String(Date.now()));
+    setSync("새 버전으로 바꾸는 중…");
+    setTimeout(() => location.reload(), 500);
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") checkUpdate(); });
+setTimeout(checkUpdate, 3000);
+
 /* ─────────── 시작 ─────────── */
 (async () => {
   const loaded = await store.load();
