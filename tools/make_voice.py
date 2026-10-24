@@ -7,7 +7,8 @@
 #   python3 tools/make_voice.py
 #
 # 목소리: ko-KR-SunHiNeural, 속도 +5% (예전 speechSynthesis rate 1.05와 맞춤)
-# ffmpeg가 있으면 앞뒤 무음을 잘라(원본은 끝에 0.8초 넘게 무음 → 숫자 세기가 늘어짐) 32kbps 모노로 줄인다.
+# ffmpeg가 있으면 앞뒤 무음을 잘라(원본은 끝에 0.8초 넘게 무음 → 숫자 세기가 늘어짐), 최대 크기를 -1dB로 맞춰(압축 없이 순수 증폭)
+# 48kbps 모노 mp3로 저장한다. (10/24: 앱에서 세게 압축해 키웠더니 "카세트 테이프 늘어지는" 소리 → 파일 자체를 키우는 방식으로)
 import asyncio, hashlib, json, os, shutil, subprocess, sys
 
 try:
@@ -22,17 +23,34 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "voice")
 VOICE, RATE = "ko-KR-SunHiNeural", "+5%"
 
 
+GEN = "2"   # 만드는 방식(목소리·음량·음질)을 바꾸면 올린다 → 파일 이름이 바뀌어 폰·캐시에 남은 옛 파일 대신 새 파일을 받는다
+
+
 def fname(text):
-    return hashlib.md5(text.encode("utf-8")).hexdigest()[:10]
+    return hashlib.md5((GEN + ":" + text).encode("utf-8")).hexdigest()[:10]
 
 
 TRIM = ("silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.03,areverse,"
         "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse")
 
 
+def peak_db(src):
+    out = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af", "volumedetect", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    for line in out.splitlines():
+        if "max_volume:" in line:
+            return float(line.split("max_volume:")[1].split("dB")[0])
+    return 0.0
+
+
 def trim(raw, path):
     if shutil.which("ffmpeg"):
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-af", TRIM, "-ac", "1", "-ar", "24000", "-b:a", "32k", path], check=True)
+        wav = path + ".tmp.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-af", TRIM, "-ac", "1", "-ar", "24000", wav], check=True)
+        gain = -1.0 - peak_db(wav)                                # 최대값을 -1dBFS로
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav, "-af", f"volume={gain:.2f}dB",
+                        "-ac", "1", "-ar", "24000", "-b:a", "48k", path], check=True)
+        os.remove(wav)
         os.remove(raw)
     else:
         os.replace(raw, path)
