@@ -2192,8 +2192,10 @@ const CALL = { leg:"무릎 90도까지", lat:"등으로 당기세요", chest:"�
 const KR = ["","하나","둘","셋","넷","다섯","여섯","일곱","여덟","아홉","열","열하나","열둘"];
 // 소리 방식 (iOS 오디오 세션) — 새 iPhone에서 "무음 모드 + 다른 앱 음악 + 음성·박자"가 어떻게 되는지 기기마다 달라 사용자가 골라 시험한다.
 //   auto: Safari가 알아서 / ambient: 다른 앱 음악과 섞임(무음 모드면 앱 소리 꺼짐) / playback: 무음 모드에서도 남(다른 앱 음악을 멈출 수 있음)
-const SND = [["auto","자동"],["ambient","섞기 (무음 모드면 꺼짐)"],["playback","무음 모드에서도"],["transient","음성 때 음악 줄이기 (시험)"]];
-function applySnd(){ try{ if(navigator.audioSession) navigator.audioSession.type = cfg.soundMode || "auto"; }catch(e){} }
+// 10/24 사용자 시험: 섞기(ambient)만 "지니뮤직 + 음성 안내"가 같이 남. transient(음악 줄이기 시험)·자동은 음악을 끄거나 앱 소리가 꺼짐 → 섞기를 기본으로, transient는 뺌
+const SND = [["ambient","섞기 (추천) · 음악과 같이"],["auto","자동"],["playback","무음 모드에서도"]];
+const sndMode = () => SND.some(x => x[0] === cfg.soundMode) ? cfg.soundMode : "ambient";
+function applySnd(){ try{ if(navigator.audioSession) navigator.audioSession.type = sndMode(); }catch(e){} }
 applySnd();
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
 
@@ -2254,6 +2256,17 @@ async function voiceLoad(list){
 function voiceWarm(){
   voiceLoad([...voiceAllPhrases(false), ...coachPlan().map(e => `핀은 ${PLAN[e.id]}킬로`)]);
 }
+// 다른 앱 음악은 웹에서 줄일 수 없어서(새 iOS) 대신 안내 음성을 2배로 키우고 압축기로 찢어지지 않게 해 음악 위로 들리게 한다
+function voiceBus(ctx){
+  if(!VOICE.bus || VOICE.bus.context !== ctx){
+    const g = ctx.createGain(), c = ctx.createDynamicsCompressor();
+    g.gain.value = 2;
+    c.threshold.value = -12; c.knee.value = 6; c.ratio.value = 8; c.attack.value = 0.003; c.release.value = 0.15;
+    g.connect(c); c.connect(ctx.destination);
+    VOICE.bus = g;
+  }
+  return VOICE.bus;
+}
 function sayClip(t){
   const parts = voiceParts(t);
   if(!parts.length || !parts.every(x => VOICE.buf[x])){ if(VOICE.map) voiceLoad(parts); return false; }
@@ -2266,7 +2279,7 @@ function sayClip(t){
   let at = ctx.currentTime + 0.02;
   parts.forEach(x => {
     const b = VOICE.buf[x], node = ctx.createBufferSource();
-    node.buffer = b; node.connect(ctx.destination); node.start(at);
+    node.buffer = b; node.connect(voiceBus(ctx)); node.start(at);
     VOICE.src.push(node); at += b.duration + 0.08;
   });
   VOICE.until = at;
@@ -2372,10 +2385,10 @@ setInterval(() => {
       + ` · 녹음 음성 ${Object.keys(VOICE.buf).length}/${VOICE.map ? Object.keys(VOICE.map).length : 0}`;
   }
   const b = document.getElementById("c-snd");
-  if(b) b.textContent = "소리 방식: " + (SND.find(x => x[0] === (cfg.soundMode || "auto")) || SND[0])[1];
+  if(b) b.textContent = "소리 방식: " + SND.find(x => x[0] === sndMode())[1];
 }, 1000);
 document.getElementById("c-snd").onclick = () => {
-  const i = SND.findIndex(x => x[0] === (cfg.soundMode || "auto"));
+  const i = SND.findIndex(x => x[0] === sndMode());
   cfg = { ...cfg, soundMode: SND[(i + 1) % SND.length][0] };
   localStorage.setItem(CKEY, JSON.stringify(cfg));
   applySnd();
