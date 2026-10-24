@@ -2192,7 +2192,7 @@ const CALL = { leg:"무릎 90도까지", lat:"등으로 당기세요", chest:"�
 const KR = ["","하나","둘","셋","넷","다섯","여섯","일곱","여덟","아홉","열","열하나","열둘"];
 // 소리 방식 (iOS 오디오 세션) — 새 iPhone에서 "무음 모드 + 다른 앱 음악 + 음성·박자"가 어떻게 되는지 기기마다 달라 사용자가 골라 시험한다.
 //   auto: Safari가 알아서 / ambient: 다른 앱 음악과 섞임(무음 모드면 앱 소리 꺼짐) / playback: 무음 모드에서도 남(다른 앱 음악을 멈출 수 있음)
-const SND = [["auto","자동"],["ambient","섞기 (무음 모드면 꺼짐)"],["playback","무음 모드에서도"]];
+const SND = [["auto","자동"],["ambient","섞기 (무음 모드면 꺼짐)"],["playback","무음 모드에서도"],["transient","음성 때 음악 줄이기 (시험)"]];
 function applySnd(){ try{ if(navigator.audioSession) navigator.audioSession.type = cfg.soundMode || "auto"; }catch(e){} }
 applySnd();
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
@@ -2332,11 +2332,11 @@ function bgmOn(){
       g.connect(bgmBus()); o.connect(g);
       // 10/24 새 iPhone: 예전 낮은 쿵(45~110Hz)·작은 틱(.012)은 폰 스피커·이어폰에서 음악에 묻혀 안 들림 → 잘 들리는 중간 음역 "똑·딱"으로
       if(n%4===0){ o.type="triangle"; o.frequency.setValueAtTime(700,t); o.frequency.exponentialRampToValueAtTime(350,t+.06);
-        g.gain.setValueAtTime(.22,t); g.gain.exponentialRampToValueAtTime(.001,t+.09); o.start(t); o.stop(t+.1); }
+        g.gain.setValueAtTime(.55,t); g.gain.exponentialRampToValueAtTime(.001,t+.12); o.start(t); o.stop(t+.13); }
       else if(n%2===1){ o.type="triangle"; o.frequency.setValueAtTime(1600,t);
-        g.gain.setValueAtTime(.10,t); g.gain.exponentialRampToValueAtTime(.001,t+.035); o.start(t); o.stop(t+.045); }
+        g.gain.setValueAtTime(.25,t); g.gain.exponentialRampToValueAtTime(.001,t+.05); o.start(t); o.stop(t+.06); }
       else { o.type="triangle"; o.frequency.setValueAtTime(1000,t);
-        g.gain.setValueAtTime(.14,t); g.gain.exponentialRampToValueAtTime(.001,t+.05); o.start(t); o.stop(t+.06); }
+        g.gain.setValueAtTime(.35,t); g.gain.exponentialRampToValueAtTime(.001,t+.08); o.start(t); o.stop(t+.09); }
       n = (n+1)%8;
     }, 300);
   }catch(e){}
