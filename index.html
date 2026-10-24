@@ -2194,6 +2194,7 @@ try{ if(navigator.audioSession) navigator.audioSession.type = "ambient"; }catch(
 const CO = { list:EX, phase:"idle", ex:0, set:0, rep:0, count:0, voice:true, bgm:true, tempo:3000, timer:null, ctx:null, beat:null };
 
 function say(t){
+  if(CO.voice && sayClip(t)) return;   // 녹음 음성 우선 (아래 "녹음 음성" 참고)
   if(!CO.voice || !window.speechSynthesis) return;
   try{
     const s = window.speechSynthesis;
@@ -2206,6 +2207,66 @@ function say(t){
     u.onend = () => { try{ if(s.paused) s.resume(); }catch(e){} };
     s.speak(u);
   }catch(e){}
+}
+/* ─────────── 녹음 음성 ───────────
+   새 iPhone(10/23~)은 speechSynthesis가 말할 때마다 멜론 같은 다른 앱 음악을 멈춘다(배타적 오디오 세션 — 웹에서 바꿀 방법 없음).
+   그래서 안내 문장을 미리 만든 음성 파일(voice/*.mp3, tools/make_voice.py로 생성)로 Web Audio에서 재생한다 → 음악과 섞여 나온다.
+   문장은 마침표로 나눠 조각별 파일을 이어 붙인다 ("핀은 2.5킬로"의 소수점은 안 나눔). 파일이 없는 조각이 있으면 예전처럼 speechSynthesis. */
+const VOICE = { map:null, buf:{}, loading:{}, src:[], until:0 };
+const voiceParts = t => String(t).split(/\.(?!\d)\s*/).map(x => x.trim()).filter(Boolean);
+function voiceAllPhrases(withWeights){
+  const S = new Set(), add = t => voiceParts(t).forEach(x => S.add(x));
+  EX.forEach(e => { add(e.name); if(e.alt) add(e.alt.name); });
+  if(withWeights){ for(let w = 1; w <= 200; w++) add(`핀은 ${w}킬로`); for(let w = 0.5; w < 100; w++) add(`핀은 ${w}킬로`); }
+  for(let n = 1; n <= 60; n++) add(String(n));
+  KR.forEach(k => k && add(k));
+  Object.values(CALL).forEach(add);
+  ["5초 후 시작합니다","전부 끝났습니다","오늘 잘했어요","오늘도 성공입니다","세트 완료",`${REST}초 휴식`,`${HOME_REST}초 휴식`,
+   "60초 남았습니다","30초 남았습니다","10초 남았습니다","10초","15초","시작","음성 켜짐"].forEach(add);
+  for(let n = 2; n <= 5; n++) add(`${n}세트 시작`);
+  HOME.forEach(e => {
+    add(e.name); if(e.call) add(e.call);
+    if(e.hold){ add(`${e.dur}초`); add(`${Math.floor(e.dur/2)}초 남았습니다`); add(`${e.name} ${e.dur}초`); }
+    else add(`${e.name} ${e.reps}회`);
+  });
+  return [...S];
+}
+async function voiceLoad(list){
+  try{
+    if(!VOICE.map){ const r = await fetch("voice/index.json"); VOICE.map = r.ok ? await r.json() : {}; }
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const dec = new OAC(1, 1, 24000);   // 디코딩 전용 — 코치 오디오(CO.ctx)를 건드리지 않는다
+    await Promise.all(list.filter(x => VOICE.map[x] && !VOICE.buf[x] && !VOICE.loading[x]).map(async x => {
+      VOICE.loading[x] = true;
+      try{
+        const ab = await (await fetch("voice/" + VOICE.map[x] + ".mp3")).arrayBuffer();
+        VOICE.buf[x] = await new Promise((ok, no) => dec.decodeAudioData(ab, ok, no));
+      }catch(e){}
+      VOICE.loading[x] = false;
+    }));
+  }catch(e){ VOICE.map = VOICE.map || {}; }
+}
+// 코치·집 탭을 열 때 미리 받아 둔다 (첫 안내부터 녹음 음성으로)
+function voiceWarm(){
+  voiceLoad([...voiceAllPhrases(false), ...coachPlan().map(e => `핀은 ${PLAN[e.id]}킬로`)]);
+}
+function sayClip(t){
+  const parts = voiceParts(t);
+  if(!parts.length || !parts.every(x => VOICE.buf[x])){ if(VOICE.map) voiceLoad(parts); return false; }
+  let fresh = false;
+  if(!CO.ctx){ const AC = window.AudioContext||window.webkitAudioContext; CO.ctx = new AC(); fresh = true; }
+  const ctx = CO.ctx;
+  if(ctx.state !== "running"){ ctx.resume().catch(() => {}); if(!fresh && ctx.state !== "suspended") return false; }
+  VOICE.src.forEach(x => { try{ x.stop(); }catch(e){} });   // 앞 안내가 남아 있으면 끊고 새 안내 (기존 cancel과 같게)
+  VOICE.src = [];
+  let at = ctx.currentTime + 0.02;
+  parts.forEach(x => {
+    const b = VOICE.buf[x], node = ctx.createBufferSource();
+    node.buffer = b; node.connect(ctx.destination); node.start(at);
+    VOICE.src.push(node); at += b.duration + 0.08;
+  });
+  VOICE.until = at;
+  return true;
 }
 // 15초마다 음성 엔진을 깨워둔다 (iOS 무음 방지)
 setInterval(() => {
@@ -2282,20 +2343,10 @@ function bgmBus(){
   if(!CO.bus || CO.bus.context !== CO.ctx){ CO.bus = CO.ctx.createGain(); CO.bus.connect(CO.ctx.destination); }
   return CO.bus;
 }
-let lastTalk = Date.now();
 setInterval(() => {
   const s = window.speechSynthesis;
-  if(!s) return;
-  const talking = s.speaking || s.pending;
-  if(talking) lastTalk = Date.now();
+  const talking = (s && (s.speaking || s.pending)) || (CO.ctx && CO.ctx.currentTime < VOICE.until);
   if(CO.beat && CO.ctx && CO.ctx.state === "running") bgmBus().gain.setTargetAtTime(talking ? 0.25 : 1, CO.ctx.currentTime, 0.08);
-  // 새 iPhone은 휴식 중 음성이 오래(약 30초) 끊겼다가 다시 나올 때 오디오를 통째로 끊는다(배경음·다른 앱 음악 모두).
-  // → 운동 중엔 8초마다 들리지 않는 음성(볼륨 0)으로 음성 엔진을 깨워 둔다. say()는 그대로.
-  const running = (CO.phase !== "idle" && CO.phase !== "done") || (HO.phase !== "idle" && HO.phase !== "done");
-  if(running && CO.voice && !talking && Date.now() - lastTalk > 8000){
-    lastTalk = Date.now();
-    try{ const u = new SpeechSynthesisUtterance("."); u.lang = "ko-KR"; u.volume = 0; s.speak(u); }catch(e){}
-  }
 }, 150);
 const bgmStuck = () => !!(CO.beat && CO.ctx && CO.ctx.state !== "running");
 // 눌러도 resume이 안 먹는 경우(10/23 실제 폰) → 화면을 누른 그 순간에 오디오를 새로 만든다 (사용자 동작 안에서 만들면 iOS가 허락)
@@ -2666,6 +2717,7 @@ function renderHome(){
 function goTab(name){
   tab = name;
   document.body.dataset.tab = name;                         // PC에서 탭별 폭 조절용
+  if(name === "coach" || name === "home") voiceWarm();
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x.dataset.tab===name));
   ["today","gear","coach","home","trend","setup"].forEach(t =>
     document.getElementById("tab-"+t).classList.toggle("hide", t!==name));

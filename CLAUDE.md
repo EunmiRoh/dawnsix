@@ -243,16 +243,26 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
 
 ---
 
+## 5-1. 녹음 음성 (`voice/`, PR #28)
+
+- 코치·집 운동 안내는 `say(t)` → `sayClip(t)`가 먼저 시도: 문장을 마침표로 나눠(`voiceParts`, "2.5" 소수점은 안 나눔) 조각마다 `voice/index.json`(문장 → 파일)에 있는 mp3를 이어 재생. 하나라도 없으면 예전 `speechSynthesis`로.
+- 코치·집 탭을 열면 `voiceWarm()`이 필요한 조각을 받아 `OfflineAudioContext`로 디코딩해 둔다 (`VOICE.buf`). 서비스워커가 mp3도 캐시.
+- 음성 재생 중엔 앱 박자(`bgmBus`)를 0.25로 줄인다 (`VOICE.until`).
+- 목소리: Edge TTS `ko-KR-SunHiNeural`, 속도 +5%, 앞뒤 무음 잘라 32kbps 모노. 450문장 · 약 2.6MB.
+- **안내 문장을 바꾸거나 운동·무게 범위를 바꾸면:** 앱에서 `voiceAllPhrases(true)`를 `voice/phrases.txt`로 뽑고 `python3 tools/make_voice.py` (없는 것만 생성, 빠진 파일은 삭제, `index.json` 갱신). 무게 문장은 `핀은 N킬로` 1~200 + 0.5~99.5.
+
 ## 6. 코드 수정 시 지켜야 할 것
 
 1. **음성 코치 코드를 건드리지 않는다.** 과거에 수정하다 음성이 안 나온 적 있음. 패치 후 다음 토큰 개수가 원본과 같은지 확인:
-   `speechSynthesis`(18) · `SpeechSynthesisUtterance`(2) · `AudioContext`(4) · `voice`(10) · `speak`(4) · `bgmOff`(8)
-   - 10/24 PR #27에서 의도적으로 늘어남(+1·+1·+1·+2): 새 iPhone 대응으로 `say()` 밖에 음성 깨우기·배경음 줄이기 루프 추가. `say()` 본문은 그대로.
+   `speechSynthesis`(20) · `SpeechSynthesisUtterance`(1) · `AudioContext`(8) · `voice`(24) · `speak`(3) · `bgmOff`(8)
+   - 10/24 PR #28에서 의도적으로 바뀜: 녹음 음성(`VOICE`, `sayClip`, `voiceLoad`, `OfflineAudioContext`) 추가, #27의 볼륨 0 음성 깨우기 제거. `say()`는 첫 줄에 `if(CO.voice && sayClip(t)) return;` 한 줄만 추가.
 
 7. **새 iPhone(10/23 교체) 코치 소리 대응 (PR #23~#27):** 예전 폰은 음성 안내 때 배경음(앱 박자·다른 앱 음악)을 iOS가 알아서 작게 줄였다 돌려놨는데, 새 폰은 휴식 중 약 30초 침묵 뒤 첫 안내("60초 남았습니다")에서 오디오를 통째로 끊었다.
    - `navigator.audioSession.type = "ambient"` (#25) — 앱 소리를 다른 앱 음악과 섞기
    - 배경음은 `bgmBus()` 게인을 거쳐 나가고, 150ms마다 `speechSynthesis.speaking`이면 0.25로 줄였다 1로 복구 (#27, 앱이 직접 덕킹)
-   - 운동 중 음성이 8초 넘게 없으면 볼륨 0 음성(".")으로 음성 엔진을 깨워 둠 (#27, 긴 침묵 방지)
+   - ~~운동 중 볼륨 0 음성으로 음성 엔진 깨우기 (#27)~~ → #28에서 제거
+   - **진짜 원인 (10/24 사용자 시험으로 확인):** BGM 끄고 음성만 → 다른 앱 음악 멈춤 / 음성 끄고 BGM만 → 음악 계속. 즉 **새 iOS의 `speechSynthesis`가 말할 때마다 다른 앱 음악을 멈춘다**(배타적 오디오 세션, 웹에서 덕킹 옵션 없음).
+   - → **#28 녹음 음성:** 안내 문장을 미리 만든 mp3(`voice/`)로 Web Audio에서 재생 → 음악과 섞임. 아래 "녹음 음성" 참고.
    - 그래도 멈추면 `#bgmhint` 안내 → 화면 터치 시 오디오를 새로 만들어 복구 (#24·#26)
    - 목소리 음색은 기기 설정(설정 › 손쉬운 사용 › 읽기 및 말하기 › 음성 › 한국어)을 따른다
 
