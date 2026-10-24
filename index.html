@@ -2282,7 +2282,7 @@ function sayClip(t){
     node.buffer = b; node.connect(voiceBus(ctx)); node.start(at);
     VOICE.src.push(node); at += b.duration + 0.08;
   });
-  VOICE.until = at;
+  VOICE.until = at; VOICE.ctx = ctx;
   return true;
 }
 // 15초마다 음성 엔진을 깨워둔다 (iOS 무음 방지)
@@ -2344,12 +2344,12 @@ function bgmOn(){
       const t = CO.ctx.currentTime, g = CO.ctx.createGain(), o = CO.ctx.createOscillator();
       g.connect(bgmBus()); o.connect(g);
       // 10/24 새 iPhone: 예전 낮은 쿵(45~110Hz)·작은 틱(.012)은 폰 스피커·이어폰에서 음악에 묻혀 안 들림 → 잘 들리는 중간 음역 "똑·딱"으로
-      if(n%4===0){ o.type="triangle"; o.frequency.setValueAtTime(700,t); o.frequency.exponentialRampToValueAtTime(350,t+.06);
-        g.gain.setValueAtTime(.55,t); g.gain.exponentialRampToValueAtTime(.001,t+.12); o.start(t); o.stop(t+.13); }
-      else if(n%2===1){ o.type="triangle"; o.frequency.setValueAtTime(1600,t);
-        g.gain.setValueAtTime(.25,t); g.gain.exponentialRampToValueAtTime(.001,t+.05); o.start(t); o.stop(t+.06); }
-      else { o.type="triangle"; o.frequency.setValueAtTime(1000,t);
-        g.gain.setValueAtTime(.35,t); g.gain.exponentialRampToValueAtTime(.001,t+.08); o.start(t); o.stop(t+.09); }
+      // 10/24: 0.53으로도 지니뮤직 위에선 안 들림(음성은 들림) → 짧아서 묻힌다고 보고 더 크고 길게, "똑"(낮게)·"딱"(높게) 두 소리만
+      if(n%2===0){ o.type="triangle"; o.frequency.setValueAtTime(900,t); o.frequency.exponentialRampToValueAtTime(600,t+.1);
+        g.gain.setValueAtTime(n%4===0 ? .9 : .7,t); g.gain.exponentialRampToValueAtTime(.001,t+.18); o.start(t); o.stop(t+.19); }
+      else { o.type="triangle"; o.frequency.setValueAtTime(1500,t);
+        g.gain.setValueAtTime(.45,t); g.gain.exponentialRampToValueAtTime(.001,t+.1); o.start(t); o.stop(t+.11); }
+      CO.ticks = (CO.ticks || 0) + 1;
       n = (n+1)%8;
     }, 300);
   }catch(e){}
@@ -2363,7 +2363,7 @@ function bgmBus(){
 }
 setInterval(() => {
   const s = window.speechSynthesis;
-  const talking = (s && (s.speaking || s.pending)) || (CO.ctx && CO.ctx.currentTime < VOICE.until);
+  const talking = (s && (s.speaking || s.pending)) || (CO.ctx && VOICE.ctx === CO.ctx && CO.ctx.currentTime < VOICE.until);
   if(CO.beat && CO.ctx && CO.ctx.state === "running") bgmBus().gain.setTargetAtTime(talking ? 0.25 : 1, CO.ctx.currentTime, 0.08);
 }, 150);
 const bgmStuck = () => !!(CO.beat && CO.ctx && CO.ctx.state !== "running");
@@ -2382,7 +2382,8 @@ setInterval(() => {
     const st = { running:"재생 가능", suspended:"멈춤", interrupted:"끊김", closed:"닫힘" };
     d.textContent = `소리 상태 · 오디오 ${CO.ctx ? (st[CO.ctx.state] || CO.ctx.state) : "아직 없음"}`
       + ` · 세션 ${navigator.audioSession ? navigator.audioSession.type : "지원 안 함"}`
-      + ` · 녹음 음성 ${Object.keys(VOICE.buf).length}/${VOICE.map ? Object.keys(VOICE.map).length : 0}`;
+      + ` · 녹음 음성 ${Object.keys(VOICE.buf).length}/${VOICE.map ? Object.keys(VOICE.map).length : 0}`
+      + ` · 박자 ${CO.beat ? (CO.ticks || 0) + "회" : "꺼짐"}${CO.bus && CO.beat ? " · 박자 음량 " + Math.round(CO.bus.gain.value * 100) + "%" : ""}`;
   }
   const b = document.getElementById("c-snd");
   if(b) b.textContent = "소리 방식: " + SND.find(x => x[0] === sndMode())[1];
