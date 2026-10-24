@@ -2218,7 +2218,7 @@ function say(t){
    새 iPhone(10/23~)은 speechSynthesis가 말할 때마다 멜론 같은 다른 앱 음악을 멈춘다(배타적 오디오 세션 — 웹에서 바꿀 방법 없음).
    그래서 안내 문장을 미리 만든 음성 파일(voice/*.mp3, tools/make_voice.py로 생성)로 Web Audio에서 재생한다 → 음악과 섞여 나온다.
    문장은 마침표로 나눠 조각별 파일을 이어 붙인다 ("핀은 2.5킬로"의 소수점은 안 나눔). 파일이 없는 조각이 있으면 예전처럼 speechSynthesis. */
-const VOICE = { map:null, buf:{}, loading:{}, src:[], until:0 };
+const VOICE = { map:null, buf:{}, loading:{}, src:[], until:0, seq:0 };
 const voiceParts = t => String(t).split(/\.(?!\d)\s*/).map(x => x.trim()).filter(Boolean);
 function voiceAllPhrases(withWeights){
   const S = new Set(), add = t => voiceParts(t).forEach(x => S.add(x));
@@ -2242,14 +2242,14 @@ async function voiceLoad(list){
     if(!VOICE.map){ const r = await fetch("voice/index.json"); VOICE.map = r.ok ? await r.json() : {}; }
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const dec = new OAC(1, 1, 24000);   // 디코딩 전용 — 코치 오디오(CO.ctx)를 건드리지 않는다
-    await Promise.all(list.filter(x => VOICE.map[x] && !VOICE.buf[x] && !VOICE.loading[x]).map(async x => {
-      VOICE.loading[x] = true;
+    // 이미 받는 중인 조각은 그 작업을 같이 기다린다 (미리 받기와 첫 안내가 겹쳐도 첫 안내가 빠지지 않게)
+    await Promise.all(list.filter(x => VOICE.map[x] && !VOICE.buf[x]).map(x => VOICE.loading[x] || (VOICE.loading[x] = (async () => {
       try{
         const ab = await (await fetch("voice/" + VOICE.map[x] + ".mp3")).arrayBuffer();
         VOICE.buf[x] = await new Promise((ok, no) => dec.decodeAudioData(ab, ok, no));
       }catch(e){}
-      VOICE.loading[x] = false;
-    }));
+      delete VOICE.loading[x];
+    })())));
   }catch(e){ VOICE.map = VOICE.map || {}; }
 }
 // 코치·집 탭을 열 때 미리 받아 둔다 (첫 안내부터 녹음 음성으로)
@@ -2267,13 +2267,26 @@ function voiceBus(ctx){
   }
   return VOICE.bus;
 }
+// 10/24: 오늘 탭 "음성 코치와 함께 하기"는 코치 탭을 열자마자 시작해서, 녹음 음성을 받기 전 첫 안내가
+// 아이폰 음성 읽기(옛 목소리)로 나가며 지니뮤직을 껐다. → 목록에 있는 문장이면 받아질 때까지 기다렸다 녹음 음성으로 말하고,
+// 목록에 없는 문장만 아이폰 음성 읽기로. 기다리는 사이 새 안내가 오면 옛 것은 버린다(기존 cancel과 같게).
 function sayClip(t){
   const parts = voiceParts(t);
-  if(!parts.length || !parts.every(x => VOICE.buf[x])){ if(VOICE.map) voiceLoad(parts); return false; }
-  let fresh = false;
-  if(!CO.ctx){ const AC = window.AudioContext||window.webkitAudioContext; CO.ctx = new AC(); fresh = true; }
+  if(!parts.length) return false;
+  if(parts.every(x => VOICE.buf[x])) return playClips(parts);
+  if(VOICE.map && !parts.every(x => VOICE.map[x])) return false;          // 녹음 없는 문장 → 아이폰 음성 읽기
+  const seq = ++VOICE.seq, asked = Date.now();
+  voiceLoad(parts).then(() => {
+    if(seq !== VOICE.seq || Date.now() - asked > 4000) return;           // 더 새 안내가 왔거나 너무 늦었으면 버림
+    if(parts.every(x => VOICE.buf[x])) playClips(parts);
+  });
+  return true;
+}
+function playClips(parts){
+  VOICE.seq++;
+  if(!CO.ctx){ const AC = window.AudioContext||window.webkitAudioContext; CO.ctx = new AC(); }
   const ctx = CO.ctx;
-  if(ctx.state !== "running"){ ctx.resume().catch(() => {}); if(!fresh && ctx.state !== "suspended") return false; }
+  if(ctx.state !== "running") ctx.resume().catch(() => {});   // 멈춰 있어도 아이폰 음성 읽기로 넘기지 않는다 (그러면 음악이 꺼짐)
   VOICE.src.forEach(x => { try{ x.stop(); }catch(e){} });   // 앞 안내가 남아 있으면 끊고 새 안내 (기존 cancel과 같게)
   VOICE.src = [];
   let at = ctx.currentTime + 0.02;
@@ -2987,6 +3000,7 @@ async function checkUpdate(){
 }
 document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") checkUpdate(); });
 setTimeout(checkUpdate, 3000);
+setTimeout(voiceWarm, 1500);   // 오늘 탭에서 바로 코치를 시작해도 첫 안내부터 녹음 안내로
 
 /* ─────────── 시작 ─────────── */
 (async () => {
