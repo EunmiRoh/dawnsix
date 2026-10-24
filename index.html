@@ -2264,7 +2264,7 @@ function bgmOn(){
       // 새 iOS는 음성 안내가 나올 때 배경음 오디오를 "interrupted"로 멈추고 저절로 풀어주지 않는다 → 박자마다 다시 깨운다
       if(CO.ctx.state !== "running"){ CO.ctx.resume().catch(() => {}); return; }
       const t = CO.ctx.currentTime, g = CO.ctx.createGain(), o = CO.ctx.createOscillator();
-      g.connect(CO.ctx.destination); o.connect(g);
+      g.connect(bgmBus()); o.connect(g);
       if(n%4===0){ o.type="sine"; o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(45,t+.14);
         g.gain.setValueAtTime(.16,t); g.gain.exponentialRampToValueAtTime(.001,t+.18); o.start(t); o.stop(t+.2); }
       else if(n%2===1){ o.type="square"; o.frequency.setValueAtTime(2400,t);
@@ -2277,6 +2277,26 @@ function bgmOn(){
 }
 function bgmOff(){ if(CO.beat){ clearInterval(CO.beat); CO.beat = null; } }
 // 새 iPhone은 휴식 중 음성 안내 뒤 배경음 오디오를 멈추고, 화면을 누르기 전엔 다시 켜 주지 않는다
+// ── 음성이 나오는 동안만 배경음을 작게 (예전 iPhone이 알아서 해 주던 것을 앱이 직접) ──
+function bgmBus(){
+  if(!CO.bus || CO.bus.context !== CO.ctx){ CO.bus = CO.ctx.createGain(); CO.bus.connect(CO.ctx.destination); }
+  return CO.bus;
+}
+let lastTalk = Date.now();
+setInterval(() => {
+  const s = window.speechSynthesis;
+  if(!s) return;
+  const talking = s.speaking || s.pending;
+  if(talking) lastTalk = Date.now();
+  if(CO.beat && CO.ctx && CO.ctx.state === "running") bgmBus().gain.setTargetAtTime(talking ? 0.25 : 1, CO.ctx.currentTime, 0.08);
+  // 새 iPhone은 휴식 중 음성이 오래(약 30초) 끊겼다가 다시 나올 때 오디오를 통째로 끊는다(배경음·다른 앱 음악 모두).
+  // → 운동 중엔 8초마다 들리지 않는 음성(볼륨 0)으로 음성 엔진을 깨워 둔다. say()는 그대로.
+  const running = (CO.phase !== "idle" && CO.phase !== "done") || (HO.phase !== "idle" && HO.phase !== "done");
+  if(running && CO.voice && !talking && Date.now() - lastTalk > 8000){
+    lastTalk = Date.now();
+    try{ const u = new SpeechSynthesisUtterance("."); u.lang = "ko-KR"; u.volume = 0; s.speak(u); }catch(e){}
+  }
+}, 150);
 const bgmStuck = () => !!(CO.beat && CO.ctx && CO.ctx.state !== "running");
 // 눌러도 resume이 안 먹는 경우(10/23 실제 폰) → 화면을 누른 그 순간에 오디오를 새로 만든다 (사용자 동작 안에서 만들면 iOS가 허락)
 ["pointerdown","touchend"].forEach(ev => document.addEventListener(ev, () => {
