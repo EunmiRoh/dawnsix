@@ -49,7 +49,8 @@ log["2026-10-07"] = {
   inbody:  null,                            // { w, smm, fat, pct, est? }
   labs:    null,                            // 피검사 { 항목id: 수치 } — LAB_GROUPS 참고
   off:     false,                           // 회복·휴식일 (아프거나 쉬어야 하는 날 — 운동 그래프에서 "쉼")
-  lax:     null                             // 변비약 먹은 알 수 (11/3~, 없으면 null)
+  lax:     null,                            // 변비약 먹은 끼니 수 (11/3~, 없으면 null) — laxAt에서 계산
+  laxAt:   { am:false, noon:false, pm:false } // 변비약 먹은 끼니 (11/4~, 식후 1알씩)
 };
 ```
 
@@ -72,6 +73,7 @@ if(r.inbody === undefined) r.inbody = null;
 if(r.labs === undefined) r.labs = null;
 if(r.off === undefined) r.off = false;
 if(r.lax === undefined) r.lax = null;
+r.laxAt   = r.laxAt   || { am:false, noon:false, pm:false };
 ```
 
 ### 실측값은 코드에 넣지 않는다 (10/19)
@@ -261,7 +263,8 @@ URL: https://izszsqhexxzyjokwgehv.supabase.co
   - 오늘 탭: 주사일 알림·증량 상담 안내 숨김, "휴약 N일째 · 체중 1주 평균 휴약 전 → 최근 (±) · 유지 범위(±1kg)" (`pauseLines`). 늘면 생리·나트륨·배변 맥락 + 2주 이어지면 진료 때 이야기.
   - 추이 탭 마운자로 카드: 현재 = 휴약, 용량별 구간 맨 위에 "휴약" 구간. 기록 목록 주 머리줄 "· 휴약".
 - **단백질 메뉴:** `MEALS`에 우유·스트링치즈·참치캔·메추리알·순두부·생선/연어·고기 추가·단백질 음료(프로핏 말고) 추가(대략값). 오늘 먹은 것 + 최근 3주 먹은 것 + 기본 3개(밥반찬·계란·요거트)만 펼치고 나머지는 "다른 메뉴 더 보기"(`mealsMoreOpen`). 남은 양 안내는 `proteinIdea()` — 닭가슴살·프로핏 빼고 날마다 시작 메뉴를 돌려 조합 제안.
-- **변비약:** `lax` 필드(하루 먹은 알 수), 배변 카드에 −/+ , 기록 목록 칩 "변비약 N알". `isEmptyDay`에서 내용으로 침.
+- **변비약:** 배변 카드에 **아침·점심·저녁** 버튼(#41, 식후 1알씩이라 "몇 알"보다 끼니 체크가 편하다는 사용자 의견) → `laxAt`, `lax` = 체크한 끼니 수. 아침을 그릭요거트 하나로 때워도 약을 먹었으면 "아침". 기록 목록 칩 "변비약 아침·저녁". `isEmptyDay`에서 `lax > 0`이면 내용. 11/3 −/+ 방식으로 적은 기록은 `lax`만 있어 "예전 기록 N알"로 보임.
+  - 10/29 경조휴가 때 약을 안 챙겨 갔다가 복귀 후 변비로 고생함 — 외출·여행 땐 며칠 치 챙기기.
 
 ## 5-1. 녹음 음성 (`voice/`, PR #28)
 
