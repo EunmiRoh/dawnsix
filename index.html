@@ -1116,7 +1116,7 @@ function renderToday(){
   document.getElementById("datelabel").textContent =
     `${d.getMonth()+1}월 ${d.getDate()}일 ${DAY[d.getDay()]}요일${isToday?" · 오늘":""}`;
   const t = document.getElementById("title");
-  t.textContent = kind==="gym" ? (dateKey >= FLEX_FROM ? "헬스 4종 · 아침도 저녁도" : d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
+  t.textContent = kind==="gym" ? (dateKey >= FLEX_FROM ? "오늘의 운동" : d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
                 : kind==="light" ? "가볍게 4종" : "체력단련실 휴무 · 집에서 자유롭게";
   t.style.color = kind==="gym" ? "var(--dawn)" : kind==="light" ? "var(--sage)" : "var(--dim)";
 
