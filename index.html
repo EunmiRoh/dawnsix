@@ -614,7 +614,7 @@ const kindOf = (dow, key) => (key && key < FLEX_FROM)
   : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false} });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -1031,6 +1031,7 @@ function rec(){
   if(r.labs === undefined) r.labs = null;
   if(r.off === undefined) r.off = false;
   if(r.lax === undefined) r.lax = null;
+  r.laxAt = r.laxAt || {am:false,noon:false,pm:false};
   return r;
 }
 function setsOf(r, id, kind){
@@ -1370,16 +1371,25 @@ function renderToday(){
     });
     st.appendChild(arow);
   }
-  // 변비약 — 처방은 식후 2알, 11/3부터 1알씩으로 버티는 중. 하루에 먹은 알 수 합계
-  const lx = document.createElement("div");
-  lx.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:10px";
-  lx.innerHTML = `<div style="flex:1"><div style="font-size:13px">변비약</div><div class="muted" style="font-size:11px">오늘 먹은 알 수 (식후 1알씩이면 하루 2~3알)</div></div>`;
-  const lm = document.createElement("button"); lm.textContent = "−"; lm.className = "setbtn"; lm.style.cssText = "flex:0 0 42px";
-  lm.onclick = () => mutate(x => { x.lax = Math.max((x.lax || 0) - 1, 0) || null; });
-  const ln = document.createElement("b"); ln.style.cssText = "min-width:42px;text-align:center;font-size:15px"; ln.textContent = (r.lax || 0) + "알";
-  const lp = document.createElement("button"); lp.textContent = "+"; lp.className = "setbtn"; lp.style.cssText = `flex:0 0 42px;color:${HC.stool.fg};border-color:${HC.stool.fg}`;
-  lp.onclick = () => mutate(x => { x.lax = (x.lax || 0) + 1; });
-  lx.append(lm, ln, lp);
+  // 변비약 — 처방은 식후 2알, 11/3부터 식후 1알씩. 먹은 끼니만 눌러 체크(아침을 요거트로 때워도 약을 먹었으면 "아침")
+  // lax = 먹은 끼니 수(기록 목록·빈 기록 판정용), laxAt = 어느 끼니인지. 11/3~11/4 "알 수"로만 적은 기록은 lax만 있음
+  const lx = document.createElement("div"); lx.style.marginTop = "10px";
+  const anyAt = r.laxAt.am || r.laxAt.noon || r.laxAt.pm;
+  lx.innerHTML = `<div style="font-size:13px">변비약 <span class="muted" style="font-size:11px">먹은 끼니만 눌러 주세요${!anyAt && r.lax > 0 ? ` · 예전 기록 ${r.lax}알` : ""}</span></div>`;
+  const lrow = document.createElement("div"); lrow.className = "setrow"; lrow.style.marginTop = "6px";
+  [["am","아침"],["noon","점심"],["pm","저녁"]].forEach(([f, label]) => {
+    const b = document.createElement("button");
+    b.className = "setbtn" + (r.laxAt[f] ? " on" : "");
+    b.textContent = r.laxAt[f] ? label + " ✓" : label;
+    if(r.laxAt[f]){ b.style.background = HC.stool.solid; b.style.borderColor = HC.stool.solid; b.style.color = "#fff"; b.style.boxShadow = "none"; }
+    b.onclick = () => mutate(x => {
+      x.laxAt[f] = !x.laxAt[f];
+      const n = ["am","noon","pm"].filter(m => x.laxAt[m]).length;
+      x.lax = n || null;
+    });
+    lrow.appendChild(b);
+  });
+  lx.appendChild(lrow);
   st.appendChild(lx);
   const gap = daysSinceStool(dateKey);
   const gapEl = document.createElement("div");
@@ -2104,7 +2114,10 @@ function renderHistory(days, todayKey){
     if(r.yoga?.done) c.push(chip("요가", "gym"));
     if(r.backup) c.push(chip(isGymDay(dow, k) ? "대체" : "집운동", "gym"));
     if(r.off) c.push(chip("회복·휴식"));
-    if(r.lax > 0) c.push(chip(`변비약 ${r.lax}알`, "stool"));
+    if(r.lax > 0){
+      const at = [["am","아침"],["noon","점심"],["pm","저녁"]].filter(([f]) => r.laxAt?.[f]).map(([, l]) => l);
+      c.push(chip(`변비약 ${at.length ? at.join("·") : r.lax + "알"}`, "stool"));
+    }
     const p = proteinOf(r);
     if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
     else c.push(chip(`단백질 ${p}g`, "prot", p >= GOAL ? "full" : p < 60 ? "weak" : null));
