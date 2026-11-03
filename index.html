@@ -387,7 +387,30 @@ const MEALS = [
   { id:"soy",     label:"두유",             unit:"팩당", g:7 },
   { id:"tofu",    label:"두부 반 모",       unit:"",     g:10 },
   { id:"meal",    label:"밥 + 고기·생선 반찬", unit:"끼당", g:20 },
+  // 11/3 추가 — 닭가슴살·프로핏이 물려서 고를 거리 늘림 (대략값)
+  { id:"milk",    label:"우유 한 컵",       unit:"200ml", g:6 },
+  { id:"cheese",  label:"스트링치즈",       unit:"개당", g:7 },
+  { id:"tuna",    label:"참치캔 (작은 것)", unit:"캔당", g:15 },
+  { id:"quail",   label:"메추리알 5알",     unit:"",     g:6 },
+  { id:"sundubu", label:"순두부 반 봉",     unit:"",     g:9 },
+  { id:"fish",    label:"생선·연어 한 토막", unit:"",    g:20 },
+  { id:"meat",    label:"고기 추가 (손바닥 크기)", unit:"", g:20 },
+  { id:"shake",   label:"단백질 음료 (프로핏 말고)", unit:"병·팩당", g:15 },
 ];
+// 목표까지 남은 양을 채우는 예시 — 닭가슴살·프로핏은 빼고, 날마다 시작 메뉴를 돌려 매일 같은 말이 안 나오게
+const PROT_POOL = ["yogurt","egg","tuna","milk","cheese","sundubu","quail","fish"];
+function proteinIdea(left, key){
+  const g = id => MEALS.find(m => m.id === id).g, name = id => MEALS.find(m => m.id === id).label;
+  const start = parseKey(key).getDate() % PROT_POOL.length;
+  const pool = PROT_POOL.slice(start).concat(PROT_POOL.slice(0, start));
+  const pick = []; let sum = 0;
+  for(const id of pool){
+    if(sum >= left || pick.length >= 3) break;
+    const n = id === "egg" ? Math.min(2, Math.ceil((left - sum) / g(id))) : 1;
+    pick.push(`${name(id)}${n > 1 ? " " + n : ""}`); sum += n * g(id);
+  }
+  return pick.join(" + ");
+}
 
 /* ─────────── 집 운동 ─────────── */
 const HOME = [
@@ -583,10 +606,15 @@ const CKEY = "dawnsix-cfg-v1";
 /* ─────────── 유틸 ─────────── */
 const keyOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const parseKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(y,m-1,d); };
-const kindOf = dow => [2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest";
+// 11/3부터: 매일 갈 수는 없으니 요일마다 세트 수를 다르게 두지 않는다 — 가는 날은 늘 4종 기본 세트, 월요일만 체력단련실 휴무.
+// 그 전 날짜는 예전 규칙(화·목·토 3세트 / 수·금·일 가볍게 2세트) 그대로 — 지난 기록의 세트 칸·라벨이 바뀌지 않게 key를 넘긴다.
+const FLEX_FROM = "2026-11-03";
+const kindOf = (dow, key) => (key && key < FLEX_FROM)
+  ? ([2,4,6].includes(dow) ? "gym" : [3,5,0].includes(dow) ? "light" : "rest")
+  : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -595,13 +623,24 @@ const ratioOf = (r,kind) => {
   return 0;
 };
 const gymOK = r => !!(r && (r.arrived || r.backup || ratioOf(r,"gym") >= .5));
+const WEEK_GOAL = 3;
+const didWorkout = r => !!(r && (gymOK(r) || r.backup || (r.session && (r.session.am || r.session.pm))));
+// 어둡고 추운 날 — 헬스장 대신 집에서 짧게 (집 탭 "짧게" 코스를 바로 시작, 끝나면 대체 운동으로 체크)
+function homeShortBtn(){
+  const b = document.createElement("button");
+  b.style.cssText = "width:100%;height:52px;margin-top:8px;border-radius:12px;background:var(--panel);border:1px dashed var(--dawn);color:var(--dawn);display:flex;align-items:center;justify-content:center;gap:8px";
+  b.innerHTML = `<span style="font-size:15px;font-weight:700">집에서 ${homeMinutes(HOME.filter(x => x.short))}분</span>
+    <span style="font-size:12px;opacity:.75">어둡거나 추운 날 · 이것도 운동 1회</span>`;
+  b.onclick = () => { HO.mode = "short"; HO.list = []; goTab("home"); if(HO.phase === "idle") homeStart(); };
+  return b;
+}
 
 // 아무 내용도 없는 껍데기 기록 — 그래프에서 제외한다
 function isEmptyDay(r, countInbody){
   if(!r) return true;
   if(countInbody !== false && r.inbody) return false;
   if(countInbody !== false && r.labs && Object.keys(r.labs).length) return false;
-  if(r.bodyWeight || r.arrived || r.backup || r.off) return false;
+  if(r.bodyWeight || r.arrived || r.backup || r.off || r.lax > 0) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
   if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
@@ -740,6 +779,34 @@ function shotInfo(key){
   return { last, dose, since, next, until, nth: n, total: past.length, hist };
 }
 
+// 휴약 — 마지막 주사 후 10일이 넘도록 주사 기록이 없으면 휴약 중으로 본다 (다시 맞고 기록하면 저절로 끝남).
+// 11월 의사와 상의해 1~2달 쉬면서 체중이 유지되는지 지켜보기로 함. 휴약 시작 = 마지막 주사 + 7일(처음 건너뛴 주사일).
+// 체중은 하루 값이 아니라 1주 평균으로 비교 — 휴약 전 1주 vs 최근 1주, ±1kg 안이면 유지.
+function pauseInfo(key){
+  const si = shotInfo(key);
+  if(!si || si.since < 10) return null;
+  const from = addDays(si.last, 7);
+  const avgW = (a, b) => {
+    const ws = Object.keys(log).filter(k => k >= a && k <= b).map(k => parseFloat(log[k]?.bodyWeight)).filter(v => !isNaN(v));
+    return ws.length ? ws.reduce((x, y) => x + y, 0) / ws.length : null;
+  };
+  const base = avgW(addDays(from, -7), addDays(from, -1)), now = avgW(addDays(key, -6), key);
+  return { from, last: si.last, dose: si.dose, total: si.total, days: dayDiff(key, from) + 1, base, now,
+           diff: base !== null && now !== null ? now - base : null };
+}
+function pauseLines(pz){
+  const out = [`<b style="color:var(--mist)">휴약 ${pz.days}일째</b> (${fmtKey(pz.from)}~) · 마지막 주사 ${fmtKey(pz.last)} ${pz.dose}mg`];
+  if(pz.diff !== null){
+    const d = pz.diff, sg = d > 0 ? "+" : "";
+    out.push(`체중 1주 평균: 휴약 전 ${pz.base.toFixed(1)}kg → 최근 ${pz.now.toFixed(1)}kg (${sg}${d.toFixed(1)})`);
+    out.push(Math.abs(d) <= 1 ? `<b style="color:var(--sage)">유지 범위(±1kg) 안 — 잘 지키고 있어요</b>`
+      : d > 1 ? `<b style="color:var(--rose)">1kg 넘게 늘었어요.</b> 생리·짠 음식·배변으로 며칠 출렁일 수 있으니 1주 평균으로 보세요. 2주 넘게 이어지면 진료 때 이야기해 보세요.`
+      : `<b style="color:var(--dawn)">1kg 넘게 줄었어요.</b> 근육이 같이 빠지지 않게 단백질을 챙겨 주세요.`);
+  }
+  out.push(`다시 맞으면 위 버튼을 누르세요 — 휴약이 저절로 끝납니다.`);
+  return out;
+}
+
 // 현재 용량 구간의 요약 — 증량 상담 근거
 function doseBlockStats(key){
   const si = shotInfo(key);
@@ -866,7 +933,7 @@ function daysSinceStool(key){
   }
   return bad > 0 ? bad : null;
 }
-const isGymDay = dow => ["gym","light"].includes(kindOf(dow));
+const isGymDay = (dow, key) => ["gym","light"].includes(kindOf(dow, key));
 
 /* ─────────── 상태 ─────────── */
 let log = {};
@@ -874,6 +941,7 @@ let cfg = {};
 let sb = null, user = null;
 let dateKey = keyOf(new Date());
 let tab = "today";
+let mealsMoreOpen = false;
 
 log = {};   // 아래 boot()에서 불러옴
 try { cfg = JSON.parse(localStorage.getItem(CKEY) || "{}"); } catch(e) { cfg = {}; }
@@ -962,6 +1030,7 @@ function rec(){
   if(r.inbody === undefined) r.inbody = null;
   if(r.labs === undefined) r.labs = null;
   if(r.off === undefined) r.off = false;
+  if(r.lax === undefined) r.lax = null;
   return r;
 }
 function setsOf(r, id, kind){
@@ -1021,7 +1090,7 @@ function weekOf(k){
   const mon = parseKey(k); mon.setDate(mon.getDate() - ((mon.getDay()+6)%7));
   return Array.from({length:7}, (_,i) => {
     const d = new Date(mon); d.setDate(mon.getDate()+i);
-    const kk = keyOf(d), kind = kindOf(d.getDay());
+    const kk = keyOf(d), kind = kindOf(d.getDay(), kk);
     return { k:kk, dow:d.getDay(), kind, r:log[kk], ratio:ratioOf(log[kk],kind) };
   });
 }
@@ -1042,17 +1111,27 @@ function renderStrip(){
 }
 
 function renderToday(){
-  const d = parseKey(dateKey), kind = kindOf(d.getDay()), r = rec();
+  const d = parseKey(dateKey), kind = kindOf(d.getDay(), dateKey), r = rec();
   const isToday = dateKey === keyOf(new Date());
   document.getElementById("datelabel").textContent =
     `${d.getMonth()+1}월 ${d.getDate()}일 ${DAY[d.getDay()]}요일${isToday?" · 오늘":""}`;
   const t = document.getElementById("title");
-  t.textContent = kind==="gym" ? (d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
+  t.textContent = kind==="gym" ? (dateKey >= FLEX_FROM ? "헬스 4종 · 아침도 저녁도" : d.getDay()===6 ? "토요일 헬스 40분" : "새벽 헬스 4종")
                 : kind==="light" ? "가볍게 4종" : "체력단련실 휴무 · 집에서 자유롭게";
   t.style.color = kind==="gym" ? "var(--dawn)" : kind==="light" ? "var(--sage)" : "var(--dim)";
 
   const box = document.getElementById("today");
   box.innerHTML = "";
+
+  // 이번 주 운동 — 매일이 아니라 주 3회를 목표로 (헬스·저녁 헬스·집 운동 모두 1회)
+  if(dateKey >= FLEX_FROM){
+    const wk = weekOf(dateKey), done = wk.filter(w => didWorkout(w.r)).length;
+    const wc = document.createElement("div"); wc.className = "card"; wc.style.cssText = "margin-bottom:12px;padding:12px 16px";
+    wc.innerHTML = `<div class="row"><b style="font-size:14px">이번 주 운동 <span style="color:var(--dawn)">${done}회</span><span class="muted" style="font-weight:400"> / 목표 ${WEEK_GOAL}회</span></b>
+      <span style="display:flex;gap:4px">${wk.map(w => `<i style="width:9px;height:9px;border-radius:50%;display:inline-block;background:${didWorkout(w.r) ? HC.gym.solid : "var(--line)"}"></i>`).join("")}</span></div>
+      <div class="muted" style="font-size:12px;margin-top:4px">${done >= WEEK_GOAL ? "이번 주 목표 채웠어요. 더 하면 보너스." : "헬스·저녁 헬스·집에서 짧게 — 어느 것이든 1회. 못 간 날은 실패가 아니에요."}</div>`;
+    box.appendChild(wc);
+  }
 
   if(kind==="gym" || kind==="light"){
     const todayEx = EX;
@@ -1105,6 +1184,7 @@ function renderToday(){
       <span style="font-size:12px;opacity:.75">이어폰 끼고 시작</span>`;
     cta.onclick = () => { goTab("coach"); if(CO.phase === "idle") coachStart(); };
     box.appendChild(cta);
+    box.appendChild(homeShortBtn());
 
     todayEx.forEach((e,i) => {
       const arr = setsOf(r, (e.alt && r.pick[e.id] === e.alt.id) ? e.alt.id : e.id, kind);
@@ -1208,6 +1288,7 @@ function renderToday(){
     rest1.textContent = "집 운동 코치와 함께 하기";
     rest1.onclick = () => { goTab("home"); if(HO.phase === "idle") homeStart(); };
     box.appendChild(rest1);
+    box.appendChild(homeShortBtn());
 
     const rest2 = document.createElement("button");
     const rdone = rec().backup;
@@ -1289,6 +1370,17 @@ function renderToday(){
     });
     st.appendChild(arow);
   }
+  // 변비약 — 처방은 식후 2알, 11/3부터 1알씩으로 버티는 중. 하루에 먹은 알 수 합계
+  const lx = document.createElement("div");
+  lx.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:10px";
+  lx.innerHTML = `<div style="flex:1"><div style="font-size:13px">변비약</div><div class="muted" style="font-size:11px">오늘 먹은 알 수 (식후 1알씩이면 하루 2~3알)</div></div>`;
+  const lm = document.createElement("button"); lm.textContent = "−"; lm.className = "setbtn"; lm.style.cssText = "flex:0 0 42px";
+  lm.onclick = () => mutate(x => { x.lax = Math.max((x.lax || 0) - 1, 0) || null; });
+  const ln = document.createElement("b"); ln.style.cssText = "min-width:42px;text-align:center;font-size:15px"; ln.textContent = (r.lax || 0) + "알";
+  const lp = document.createElement("button"); lp.textContent = "+"; lp.className = "setbtn"; lp.style.cssText = `flex:0 0 42px;color:${HC.stool.fg};border-color:${HC.stool.fg}`;
+  lp.onclick = () => mutate(x => { x.lax = (x.lax || 0) + 1; });
+  lx.append(lm, ln, lp);
+  st.appendChild(lx);
   const gap = daysSinceStool(dateKey);
   const gapEl = document.createElement("div");
   gapEl.className = "muted"; gapEl.style.cssText = "font-size:12px;margin-top:10px";
@@ -1370,7 +1462,8 @@ function renderToday(){
   dowrow.appendChild(dowlab); dowrow.appendChild(dowsel);
   sh.appendChild(dowrow);
   // 오늘이 주사일인데 아직 안 눌렀으면 알림
-  if(parseKey(dateKey).getDay() === shotDow() && !r.shot.done){
+  const pz = pauseInfo(dateKey);
+  if(parseKey(dateKey).getDay() === shotDow() && !r.shot.done && !pz){
     const rm = document.createElement("div"); rm.className = "warn";
     rm.innerHTML = `<b>오늘은 ${DAY[shotDow()]}요일 — 주사일입니다.</b> 맞고 오시면 위 버튼 눌러두세요.`;
     sh.appendChild(rm);
@@ -1380,6 +1473,8 @@ function renderToday(){
   sinfo.className = "muted"; sinfo.style.cssText = "font-size:12px;margin-top:10px;line-height:1.7";
   if(!si){
     sinfo.textContent = "주사 맞은 날 눌러두면 며칠차 계산이 시작됩니다.";
+  } else if(pz){
+    sinfo.innerHTML = pauseLines(pz).join("<br>");
   } else {
     const b2 = [`<b style="color:var(--mist)">주사 ${si.since}일차 · ${si.dose}mg</b>`];
     b2.push(`직전 주사 ${fmtKey(si.last)} (${si.dose}mg ${si.nth}차)`);
@@ -1496,7 +1591,13 @@ function renderToday(){
   pw.innerHTML = `<div class="row"><span class="eyebrow" style="color:var(--rose)">단백질</span>
     <span><b style="font-size:22px;color:${total>=GOAL?"var(--sage)":"var(--rose)"}">${total}</b><span class="muted"> / ${GOAL}g</span></span></div>
     <div class="bar"><div style="width:${Math.min(total/GOAL*100,100)}%;background:${total>=GOAL?"var(--sage)":"var(--rose)"}"></div></div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px">${left>0?`${left}g 더. 계란 ${Math.ceil(left/6)}개나 닭가슴살 ${Math.ceil(left/22)}팩이면 채워집니다.`:"오늘 목표 채웠습니다."}</div>`;
+    <div class="muted" style="font-size:12px;margin-bottom:10px">${left>0?`${left}g 더. 예: ${left > 45 ? "고기·생선 반찬 한 끼 + " : ""}${proteinIdea(left > 45 ? left - 20 : left, dateKey)}`:"오늘 목표 채웠습니다."}</div>`;
+  // 자주 먹는 것(오늘 먹은 것 + 최근 3주 먹은 것 + 기본 3개)만 펼치고, 나머지는 "다른 메뉴"에 접어 둔다
+  const recentIds = new Set(["meal","egg","yogurt"]);
+  Object.keys(log).filter(k => k >= addDays(dateKey, -21) && k <= dateKey).forEach(k => Object.entries(log[k]?.meals || {}).forEach(([id, n]) => { if(n > 0) recentIds.add(id); }));
+  const moreBox = document.createElement("details"); moreBox.style.marginTop = "6px";
+  moreBox.open = mealsMoreOpen; moreBox.ontoggle = () => { mealsMoreOpen = moreBox.open; };
+  moreBox.innerHTML = `<summary class="muted" style="font-size:12px;cursor:pointer;padding:6px 0">다른 메뉴 더 보기 — 우유·치즈·참치·생선·순두부…</summary>`;
   MEALS.forEach(m => {
     const n = r.meals[m.id] || 0;
     const f = document.createElement("div"); f.className = "food" + (n>0?" on":"");
@@ -1508,11 +1609,12 @@ function renderToday(){
     const plus = document.createElement("button"); plus.textContent="+"; plus.style.borderColor="var(--rose)"; plus.style.color="var(--rose)";
     plus.onclick = () => mutate(x => { x.meals[m.id] = (x.meals[m.id]||0)+1; });
     f.append(minus, num, plus);
-    pw.appendChild(f);
+    (recentIds.has(m.id) || n > 0 ? pw : moreBox).appendChild(f);
   });
+  if(moreBox.children.length > 1) pw.appendChild(moreBox);
   const note = document.createElement("div");
   note.className="muted"; note.style.fontSize="12px"; note.style.marginTop="8px";
-  note.textContent = "60~70g만 채운 날도 성공입니다. 아침 계란 2~3개만 고정으로. 밥은 반드시 드세요 — 탄수화물이 부족하면 단백질이 연료로 타서 근육이 빠집니다.";
+  note.textContent = "60~70g만 채운 날도 성공입니다. 물리는 건 돌려 가며 — 우유·치즈·참치·순두부처럼 손 안 가는 것부터. 밥은 반드시 드세요 — 탄수화물이 부족하면 단백질이 연료로 타서 근육이 빠집니다.";
   pw.appendChild(note);
   box.appendChild(pw);
 
@@ -1550,7 +1652,7 @@ function renderToday(){
   const days = Object.keys(log).sort();
   if(days.length){
     const start = days[0], today = keyOf(new Date());
-    const missed = weekOf(dateKey).filter(x => ["gym","light"].includes(x.kind) && x.k>=start && x.k<today && !gymOK(x.r));
+    const missed = dateKey >= FLEX_FROM ? [] : weekOf(dateKey).filter(x => ["gym","light"].includes(x.kind) && x.k>=start && x.k<today && !gymOK(x.r));
     if(missed.length>=2){
       const wdiv = document.createElement("div"); wdiv.className="warn";
       wdiv.textContent = "이번 주 헬스일을 두 번 넘겼습니다. 지난 일은 넘기고, 다음 헬스일엔 문까지만 갑니다.";
@@ -1694,10 +1796,10 @@ function renderTrend(){
   ], { h:104, labels:false }));
   // 운동 — 같은 x축. 막대 높이 = 세트 완료율, 대체(집운동)는 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 휴무
   const gcell = k => {
-    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
-    const ratio = isGymDay(dow) ? ratioOf(r, kind) : 0;
-    const done = isGymDay(dow) ? gymOK(r) : !!(r?.backup || sessionCount(r));
-    const home = !!r?.backup && !(isGymDay(dow) && ratio >= .5);
+    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow, k);
+    const ratio = isGymDay(dow, k) ? ratioOf(r, kind) : 0;
+    const done = isGymDay(dow, k) ? gymOK(r) : !!(r?.backup || sessionCount(r));
+    const home = !!r?.backup && !(isGymDay(dow, k) && ratio >= .5);
     let box;
     const tag = t => `<div style="height:28px;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--dim)">${t}</div>`;
     if(kind === "rest" && !done) box = tag("휴");
@@ -1708,6 +1810,7 @@ function renderTrend(){
       const h = Math.round(12 + 16 * Math.max(ratio, r?.arrived || sessionCount(r) ? .5 : 0));
       box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:${h}px;border-radius:5px;background:${HC.gym.solid}"></div></div>`;
     }
+    else if(k >= FLEX_FROM) box = tag("");                                          // 11/3부터: 안 간 날은 실패 표시 없이 빈칸 (주 3회 목표로 본다)
     else box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:16px;border-radius:5px;border:1.5px dashed ${HC.gym.fg};opacity:.55"></div></div>`;
     const yoga = r?.yoga?.done ? "요가" : "";
     return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">${box}
@@ -1741,7 +1844,7 @@ function renderTrend(){
   // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
   const nw = s => `<span style="white-space:nowrap">${s}</span>`;
   document.getElementById("tlegend").innerHTML = view.length ? `<div class="muted" style="font-size:10.5px;line-height:1.7;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
-      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 못 한 날`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
+      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 못 한 날(~11/2)`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
       <div>${nw(`단백질 <span style="color:${HC.prot.fg}">┅</span> 목표 ${GOAL}g`)} · ${nw(`배변 <b style="color:${HC.stool.fg}">${sgap===null?"정상 기록 없음":sgap===0?"오늘 정상":`정상 후 ${sgap}일`}</b>`)} ${nw(`<span style="color:${HC.stool.solid}">■</span> 정상`)} ${nw(`<span style="color:${HC.stool.fg}">▣</span> 딱딱`)} ${nw(`<span style="color:${HC.stool.fg}">□</span> 무름`)}</div>
     </div>` : "";
 
@@ -1909,7 +2012,13 @@ function renderTrend(){
   if(!si2){
     mc.innerHTML = `<div class="muted" style="font-size:13px">주사일을 기록하면 며칠차별 패턴이 여기에 쌓입니다.</div>`;
   } else {
-    const rows = [
+    const pz2 = pauseInfo(keyOf(new Date()));
+    const rows = pz2 ? [
+      ["현재", `휴약 ${pz2.days}일째 (${fmtKey(pz2.from)}~)`],
+      ["마지막 주사", `${fmtKey(pz2.last)} (${pz2.dose}mg)`],
+      ["체중 1주 평균", pz2.diff === null ? "기록 부족" : `${pz2.base.toFixed(1)} → ${pz2.now.toFixed(1)}kg (${pz2.diff > 0 ? "+" : ""}${pz2.diff.toFixed(1)})`],
+      ["누적", `${si2.total}회`]
+    ] : [
       ["현재", `주사 ${si2.since}일차 · ${si2.dose}mg`],
       ["직전 주사", `${fmtKey(si2.last)} (${si2.dose}mg ${si2.nth}차)`],
       ["다음 예정", `${fmtKey(si2.next)}` + (si2.until >= 0 ? ` · D-${si2.until}` : ` · ${-si2.until}일 지남`)],
@@ -1921,9 +2030,11 @@ function renderTrend(){
     const todayK = keyOf(new Date());
     const blocks = si2.hist.map((h, idx) => {
       const nx = si2.hist[idx+1];
-      const to = nx ? addDays(nx.from, -1) : todayK;
-      return { ...h, to, cur: !nx, ...rangeStats(h.from, to) };
-    }).reverse();
+      const to = nx ? addDays(nx.from, -1) : pz2 ? addDays(pz2.from, -1) : todayK;
+      return { ...h, to, cur: !nx && !pz2, ...rangeStats(h.from, to) };
+    });
+    if(pz2) blocks.push({ pause:true, from:pz2.from, to:todayK, cur:true, ...rangeStats(pz2.from, todayK) });
+    blocks.reverse();
     html += `<div class="muted" style="font-size:12px;margin-top:12px">용량별 구간</div>`
       + blocks.map(b => {
           const bits = [];
@@ -1932,8 +2043,8 @@ function renderTrend(){
           bits.push(`배변 없음 ${b.noStool}일`);
           if(b.drop !== null) bits.push(`체중 <b>${b.drop}kg</b>`);
           return `<div style="padding:8px 0;border-top:1px solid var(--line)">
-            <div class="row"><b style="font-size:13px">${b.dose}mg${b.cur ? ` <span class="hc" style="background:${HC.shot.bg};color:${HC.shot.fg}">현재</span>` : ""}</b>
-            <span class="muted" style="font-size:11px">${fmtKey(b.from)}~${b.cur ? "" : fmtKey(b.to)} · 주사 ${b.count}회 · 기록 ${b.days}일</span></div>
+            <div class="row"><b style="font-size:13px">${b.pause ? "휴약" : b.dose + "mg"}${b.cur ? ` <span class="hc" style="background:${HC.shot.bg};color:${HC.shot.fg}">현재</span>` : ""}</b>
+            <span class="muted" style="font-size:11px">${fmtKey(b.from)}~${b.cur ? "" : fmtKey(b.to)}${b.pause ? "" : ` · 주사 ${b.count}회`} · 기록 ${b.days}일</span></div>
             <div style="font-size:12px;margin-top:2px;color:var(--dim)">${bits.map(x => `<span style="white-space:nowrap">${x}</span>`).join(" · ")}</div></div>`;
         }).join("");
     const pbs = proteinByShotDay();
@@ -1985,14 +2096,15 @@ function renderHistory(days, todayKey){
   }
 
   const dayRow = k => {
-    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow);
+    const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow, k);
     const c = [];
     const sl = sessionLabel(r);
-    if(isGymDay(dow) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "gym"));
-    else if(!isGymDay(dow) && sl) c.push(chip("헬스 " + sl, "gym"));
+    if(isGymDay(dow, k) && gymOK(r)) c.push(chip((kind==="light"?"가볍게":"헬스") + (sl ? " " + sl : ""), "gym"));
+    else if(!isGymDay(dow, k) && sl) c.push(chip("헬스 " + sl, "gym"));
     if(r.yoga?.done) c.push(chip("요가", "gym"));
-    if(r.backup) c.push(chip(isGymDay(dow) ? "대체" : "집운동", "gym"));
+    if(r.backup) c.push(chip(isGymDay(dow, k) ? "대체" : "집운동", "gym"));
     if(r.off) c.push(chip("회복·휴식"));
+    if(r.lax > 0) c.push(chip(`변비약 ${r.lax}알`, "stool"));
     const p = proteinOf(r);
     if(k === todayKey && p < GOAL) c.push(chip(`단백질 ${p}g · 진행 중`));
     else c.push(chip(`단백질 ${p}g`, "prot", p >= GOAL ? "full" : p < 60 ? "weak" : null));
@@ -2031,7 +2143,8 @@ function renderHistory(days, todayKey){
   const weekCard = w => {
     const end = addDays(w.start, 6);
     const si = shotInfo(w.days[0]);
-    const doseTxt = si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
+    const pzw = pauseInfo(todayKey);
+    const doseTxt = pzw && w.start >= pzw.from ? " · 휴약" : si && si.last >= w.start ? ` · ${si.dose}mg ${si.nth}주차` : si ? ` · ${si.dose}mg` : "";
     const open = histOpen.has(w.start);
     return `<div class="card wk"><button class="wkh" data-wk="${w.start}">
         <div class="t"><b style="font-size:14px">${fmtKey(w.start)}~${fmtKey(end)}<span class="muted" style="font-size:12px;font-weight:400">${doseTxt}</span></b>
