@@ -1398,6 +1398,14 @@ function renderToday(){
     : gap===0 ? "오늘 정상. 카운터 초기화됐습니다."
     : `마지막 정상 배변 후 ${gap}일`;
   st.appendChild(gapEl);
+  // 변비약 빠뜨림 — 어제·그제 둘 다 변비약 기록이 없고 오늘도 아직 안 먹었는데 제대로 본 배변도 없으면 알림
+  // (10/29 경조휴가 때 약을 안 챙겨 갔다가 복귀 후 변비로 고생함. 변비약 기록은 11/3부터라 그 전 날짜는 보지 않음)
+  const noLax = k => k >= FLEX_FROM && !(log[k]?.lax > 0);
+  if(!(r.lax > 0) && noLax(addDays(dateKey, -1)) && noLax(addDays(dateKey, -2)) && (gap === null || gap >= 1)){
+    const lw = document.createElement("div"); lw.className = "warn";
+    lw.innerHTML = `<b>변비약 기록이 이틀째 없어요.</b> 약 챙기셨어요? 드셨다면 위 끼니 버튼을 눌러 주세요. 푸룬·물도 같이 챙기면 좋아요.`;
+    st.appendChild(lw);
+  }
   if(gap!==null && gap>=2){
     const wn = document.createElement("div"); wn.className = "warn";
     wn.innerHTML = gap>=3
