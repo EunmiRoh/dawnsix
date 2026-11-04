@@ -1733,7 +1733,7 @@ const chartW = n => CH.pad + Math.max(n,1)*CH.day + CH.right;
 function lineChart(points, unit, marks, opt={}){
   if(!points.length) return `<div class="muted" style="font-size:12px">기록이 쌓이면 그래프가 그려집니다.</div>`;
   const H = opt.h || CH.h, P=CH.pad, showLab = opt.labels !== false;
-  const base = showLab ? base : H-6, span2 = base-22;   // 날짜를 맨 아래 그래프에만 둘 땐 바닥 여백을 줄인다
+  const base = showLab ? H-30 : H-6, span2 = base-(showLab ? 22 : 18);   // 날짜를 맨 아래 그래프에만 둘 땐 바닥 여백을 줄인다
   const slots = (points.slots || points.length);
   const W = chartW(slots);
   // 세로 범위를 최소 4kg로 잡아 하루 0.몇 kg 변동이 급경사로 보이지 않게 한다
@@ -1759,8 +1759,8 @@ function lineChart(points, unit, marks, opt={}){
   }
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
     <line x1="${P}" y1="${base}" x2="${W-CH.right}" y2="${base}" stroke="var(--line)"/>
-    <text x="2" y="26" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
-    <text x="2" y="${H-28}" font-size="9" fill="var(--dim)">${mn.toFixed(1)}</text>
+    <text x="2" y="${showLab ? 26 : 14}" font-size="9" fill="var(--dim)">${mx.toFixed(1)}</text>
+    <text x="2" y="${showLab ? H-28 : base-3}" font-size="9" fill="var(--dim)">${mn.toFixed(1)}</text>
     ${(marks||[]).filter(m=>pts.some(p=>p.k===(m.k||m))).map(m=>{
       const kk = m.k || m, col = m.color || "var(--rose)", lb = m.label || "생리";
       const p = pts.find(x=>x.k===kk);
@@ -1859,7 +1859,7 @@ function renderTrend(){
   document.getElementById("wchart").innerHTML = wrapScroll(lineChart(wpts, null, [
     ...cycleStarts().map(k => ({ k, color:HC.cycle.solid, label:"생리" })),
     ...shotDays().map(k => ({ k, color:HC.shot.solid, label:"주사" }))
-  ], { h:84, labels:false }));
+  ], { h:64, labels:false }));   // 11/5: 위쪽 빈 공간 줄여 달라 — 4kg 세로 범위는 그대로, 높이만 84→64
   // 운동 — 같은 x축. 막대 높이 = 세트 완료율, 대체(집운동)는 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 휴무
   const gcell = k => {
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow, k);
