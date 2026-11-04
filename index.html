@@ -301,6 +301,8 @@
             <div class="clab">운동</div><div id="gchart"></div>
             <div class="clab">단백질 (g)</div><div id="pchart"></div>
             <div class="clab">배변</div><div id="schart"></div>
+            <div class="clab">수면 (시간)</div><div id="slchart"></div>
+            <div class="clab">잘 때 속</div><div id="dgchart"></div>
             <div id="tlegend"></div>
           </div>
         </div>
@@ -614,7 +616,7 @@ const kindOf = (dow, key) => (key && key < FLEX_FROM)
   : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false} });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null} });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -641,6 +643,7 @@ function isEmptyDay(r, countInbody){
   if(countInbody !== false && r.inbody) return false;
   if(countInbody !== false && r.labs && Object.keys(r.labs).length) return false;
   if(r.bodyWeight || r.arrived || r.backup || r.off || r.lax > 0) return false;
+  if(r.sleep && (r.sleep.bed || r.sleep.wake || r.sleep.digest)) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
   if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
@@ -672,8 +675,20 @@ const HC = {
   stool: { fg:"#3E8E77", bg:"#E4F3EE", solid:"#5FB39A" },   // 배변 — 세이지
   shot:  { fg:"#D9775A", bg:"#FDEEE8", solid:"#F0997C" },   // 주사 — 피치
   ib:    { fg:"#3A46B8", bg:"#E9ECFB", solid:"#4B5CE8" },   // 인바디 — 남색
-  cycle: { fg:"#6A5FC1", bg:"#EFEDFB", solid:"#8A7FE0" }    // 생리 — 라벤더
+  cycle: { fg:"#6A5FC1", bg:"#EFEDFB", solid:"#8A7FE0" },   // 생리 — 라벤더
+  sleep: { fg:"#8A5C86", bg:"#F5EDF4", solid:"#B48DB0", light:"#E3CFE1" },   // 수면 — 더스티 모브 (11/4)
+  digest:{ fg:"#3E8791", bg:"#E4F2F3", solid:"#6FB0B8" }    // 잘 때 속(소화) — 차분한 청록 (11/4)
 };
+// 수면 — 그날 아침 기록에 "어젯밤 잠든 시각·오늘 일어난 시각·잘 때 속"을 같이 둔다 (체중 재는 시간에 한 번에 입력)
+const SLEEP_GOAL = 7;
+const DIGEST = [["ok","편함"],["some","조금 남음"],["full","더부룩"]];
+const toMin = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+function sleepHours(r){
+  const b = toMin(r?.sleep?.bed), w = toMin(r?.sleep?.wake);
+  if(b === null || w === null) return null;
+  let m = w - b; if(m <= 0) m += 1440;          // 자정 넘겨 잔 날
+  return m > 16 * 60 ? null : Math.round(m / 6) / 10;   // 16시간 넘으면 잘못 넣은 것으로 보고 뺌
+}
 // 정상 또는 무름이면서 양이 적지 않을 때만 "제대로 본 날"로 인정 — 딱딱·찔끔은 카운터를 끊지 않는다
 const isGoodStool = r => { const st = r && r.stool; return !!(st && (st.type==="normal"||st.type==="loose") && st.amount!=="small"); };
 /* ─────────── 인바디 ─────────── */
@@ -1032,6 +1047,7 @@ function rec(){
   if(r.off === undefined) r.off = false;
   if(r.lax === undefined) r.lax = null;
   r.laxAt = r.laxAt || {am:false,noon:false,pm:false};
+  r.sleep = r.sleep || {bed:"",wake:"",digest:null};
   return r;
 }
 function setsOf(r, id, kind){
@@ -1333,7 +1349,36 @@ function renderToday(){
   wi.className="kg"; wi.style.cssText="width:84px;height:44px;font-size:16px;margin-top:8px";
   wi.placeholder="kg"; wi.inputMode="decimal"; wi.value = r.bodyWeight || "";
   wi.oninput = ev => { const r2 = rec(); r2.bodyWeight = ev.target.value; persist(); };
-  w.appendChild(wi);
+  // 체중 칸 옆에 잠든·일어난 시각 (11/4 — 못 일어나 운동을 거르는 날이 잦아 수면을 같이 본다)
+  const wrow = document.createElement("div"); wrow.style.cssText = "display:grid;grid-template-columns:76px 1fr 1fr;gap:8px;align-items:end;margin-top:8px";
+  const field = (label, el) => { const f = document.createElement("label"); f.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim);min-width:0"; f.append(label, el); return f; };
+  wi.style.cssText = "width:100%;height:44px;font-size:16px;margin:0;box-sizing:border-box";
+  const timeInp = key => {
+    const t = document.createElement("input"); t.type = "time"; t.className = "kg";
+    t.style.cssText = "width:100%;min-width:0;height:44px;font-size:14px;margin:0;padding:0 6px;box-sizing:border-box"; t.value = r.sleep[key] || "";
+    t.onchange = ev => mutate(x => { x.sleep[key] = ev.target.value; });
+    return t;
+  };
+  wrow.append(field("체중", wi), field("잠든 시간", timeInp("bed")), field("일어난 시간", timeInp("wake")));
+  w.appendChild(wrow);
+  // 잘 때 속 — 소화가 얼마나 됐는지
+  const drow = document.createElement("div"); drow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:10px";
+  drow.innerHTML = `<span style="font-size:12px;color:var(--dim);flex:0 0 auto">잘 때 속</span>`;
+  const dbtns = document.createElement("div"); dbtns.className = "setrow"; dbtns.style.cssText = "flex:1;margin:0";
+  DIGEST.forEach(([id, label]) => {
+    const b = document.createElement("button"); b.className = "setbtn" + (r.sleep.digest === id ? " on" : ""); b.textContent = label;
+    if(r.sleep.digest === id){ b.style.background = HC.digest.solid; b.style.borderColor = HC.digest.solid; b.style.color = "#fff"; b.style.boxShadow = "none"; }
+    b.onclick = () => mutate(x => { x.sleep.digest = x.sleep.digest === id ? null : id; });
+    dbtns.appendChild(b);
+  });
+  drow.appendChild(dbtns); w.appendChild(drow);
+  const sh0 = sleepHours(r);
+  if(sh0 !== null){
+    const sn = document.createElement("div"); sn.className = "muted"; sn.style.cssText = "font-size:12px;margin-top:8px";
+    sn.innerHTML = `어젯밤 <b style="color:${HC.sleep.fg}">${sh0}시간</b> 잤어요.` + (sh0 < 6
+      ? ` 잠이 모자란 날은 아침 운동을 건너뛰고 저녁이나 집에서 13분도 1회예요.` : sh0 >= SLEEP_GOAL ? ` 충분히 잤어요.` : "");
+    w.appendChild(sn);
+  }
   const ci0 = cycleInfo(dateKey);
   if(ci0 && CYCLE_HINT[ci0.phase]){
     const hint = document.createElement("div");
@@ -1811,7 +1856,7 @@ function renderTrend(){
   document.getElementById("wchart").innerHTML = wrapScroll(lineChart(wpts, null, [
     ...cycleStarts().map(k => ({ k, color:HC.cycle.solid, label:"생리" })),
     ...shotDays().map(k => ({ k, color:HC.shot.solid, label:"주사" }))
-  ], { h:104, labels:false }));
+  ], { h:84, labels:false }));
   // 운동 — 같은 x축. 막대 높이 = 세트 완료율, 대체(집운동)는 연한 채움+점선, 운동일인데 못 한 날은 빈 점선, 월요일은 휴무
   const gcell = k => {
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow, k);
@@ -1842,7 +1887,7 @@ function renderTrend(){
     : `<div class="muted" style="font-size:13px">운동을 기록하면 여기에 표시됩니다.</div>`;
 
   document.getElementById("pchart").innerHTML =
-    wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})), { h:84, labels:false }));
+    wrapScroll(barChart(view.map(k=>({k, v:proteinOf(log[k]), lab:lab(k)})), { h:60, labels:false }));
 
   const sdays = view;
   const SCOL = { none:"var(--panel2)", hard:HC.stool.bg, normal:HC.stool.solid, loose:"transparent" };
@@ -1853,17 +1898,44 @@ function renderTrend(){
         const bg = t ? SCOL[t] : "transparent";
         const bd = (t==="hard" || t==="loose") ? `1.5px dashed ${HC.stool.fg}` : `1.5px solid ${t ? bg : "var(--line)"}`;
         return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
-          <div style="height:18px;border-radius:5px;background:${bg};border:${bd}"></div>
-          <div class="muted" style="font-size:9px;margin-top:3px">${lab(k)}</div>
-          <div class="muted" style="font-size:9px;color:${sm?HC.stool.fg:"transparent"}">적음</div></div>`;
+          <div style="height:18px;border-radius:5px;background:${bg};border:${bd};font-size:8px;line-height:15px;color:${t==="normal"?"#fff":HC.stool.fg}">${sm ? "적음" : ""}</div></div>`;
       }).join("") + `</div></div>`
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
+
+  // 수면 — 막대(시간), 7시간 점선. 기록 없는 날은 빈칸
+  const slv = view.map(k => sleepHours(log[k]));
+  const slH = 50, slBase = slH - 4, slTop = Math.max(10, ...slv.filter(v => v !== null)) , slSpan = slBase - 12;
+  const slGy = slBase - (SLEEP_GOAL / slTop) * slSpan;
+  document.getElementById("slchart").innerHTML = slv.some(v => v !== null)
+    ? wrapScroll(`<svg width="${chartW(view.length)}" height="${slH}" viewBox="0 0 ${chartW(view.length)} ${slH}" style="display:block">
+        <line x1="${CH.pad}" y1="${slBase}" x2="${chartW(view.length)-CH.right}" y2="${slBase}" stroke="var(--line)"/>
+        <line x1="${CH.pad}" y1="${slGy}" x2="${chartW(view.length)-CH.right}" y2="${slGy}" stroke="${HC.sleep.fg}" stroke-dasharray="3 3"/>
+        <text x="2" y="${slGy+3}" font-size="9" fill="${HC.sleep.fg}">${SLEEP_GOAL}h</text>
+        ${slv.map((v, i) => { if(v === null) return ""; const h = (v / slTop) * slSpan, x = CH.pad + i * CH.day;
+          return `<rect x="${x + CH.day*.15}" y="${slBase-h}" width="${CH.day*.7}" height="${h}" rx="2" fill="${v >= SLEEP_GOAL ? HC.sleep.solid : HC.sleep.light}"/>
+            <text x="${x + CH.day/2}" y="${slBase-h-3}" font-size="8" fill="var(--mist)" text-anchor="middle">${v}</text>`; }).join("")}
+      </svg>`)
+    : `<div class="muted" style="font-size:12px">오늘 탭 체중 칸 옆에 잠든·일어난 시간을 넣으면 여기에 쌓입니다.</div>`;
+  // 잘 때 속 — 배변처럼 칸으로: 편함 = 꽉 찬 칸, 조금 남음 = 연한 칸+점선, 더부룩 = 빈칸+점선. 날짜는 맨 아래 여기에만
+  document.getElementById("dgchart").innerHTML = view.length
+    ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(view.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + view.map(k => {
+        const d = log[k]?.sleep?.digest;
+        const bg = d === "ok" ? HC.digest.solid : d === "some" ? HC.digest.bg : "transparent";
+        const bd = d === "ok" ? `1.5px solid ${HC.digest.solid}` : d ? `1.5px dashed ${HC.digest.fg}` : "1.5px solid var(--line)";
+        return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
+          <div style="height:14px;border-radius:5px;background:${bg};border:${bd}"></div>
+          <div class="muted" style="font-size:9px;margin-top:3px">${lab(k)}</div></div>`;
+      }).join("") + `</div></div>`
+    : "";
+  const sl7 = view.filter(k => k > addDays(keyOf(new Date()), -7)).map(k => sleepHours(log[k])).filter(v => v !== null);
+  const sl7avg = sl7.length ? (sl7.reduce((a, b) => a + b, 0) / sl7.length).toFixed(1) : null;
 
   // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
   const nw = s => `<span style="white-space:nowrap">${s}</span>`;
   document.getElementById("tlegend").innerHTML = view.length ? `<div class="muted" style="font-size:10.5px;line-height:1.7;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
       <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 못 한 날(~11/2)`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
       <div>${nw(`단백질 <span style="color:${HC.prot.fg}">┅</span> 목표 ${GOAL}g`)} · ${nw(`배변 <b style="color:${HC.stool.fg}">${sgap===null?"정상 기록 없음":sgap===0?"오늘 정상":`정상 후 ${sgap}일`}</b>`)} ${nw(`<span style="color:${HC.stool.solid}">■</span> 정상`)} ${nw(`<span style="color:${HC.stool.fg}">▣</span> 딱딱`)} ${nw(`<span style="color:${HC.stool.fg}">□</span> 무름`)}</div>
+      <div>${nw(`수면 <b style="color:${HC.sleep.fg}">${sl7avg === null ? "기록 없음" : `최근 7일 평균 ${sl7avg}시간`}</b>`)} · ${nw(`<span style="color:${HC.sleep.fg}">┅</span> ${SLEEP_GOAL}시간`)} · ${nw(`잘 때 속 <span style="color:${HC.digest.solid}">■</span> 편함`)} ${nw(`<span style="color:${HC.digest.fg}">▣</span> 조금 남음`)} ${nw(`<span style="color:${HC.digest.fg}">□</span> 더부룩`)}</div>
     </div>` : "";
 
   // 세 그래프 가로 스크롤 묶기 — 마지막 위치 유지, 처음엔 최신(오른쪽 끝)
@@ -2122,6 +2194,9 @@ function renderHistory(days, todayKey){
     if(r.yoga?.done) c.push(chip("요가", "gym"));
     if(r.backup) c.push(chip(isGymDay(dow, k) ? "대체" : "집운동", "gym"));
     if(r.off) c.push(chip("회복·휴식"));
+    const slh = sleepHours(r);
+    if(slh !== null) c.push(chip(`수면 ${slh}h`, "sleep", slh >= SLEEP_GOAL ? "full" : slh < 6 ? "weak" : undefined));
+    if(r.sleep?.digest === "full") c.push(chip("더부룩", "digest", "weak"));
     if(r.lax > 0){
       const at = [["am","아침"],["noon","점심"],["pm","저녁"]].filter(([f]) => r.laxAt?.[f]).map(([, l]) => l);
       c.push(chip(`변비약 ${at.length ? at.join("·") : r.lax + "알"}`, "stool"));
