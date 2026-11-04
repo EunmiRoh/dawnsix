@@ -40,6 +40,9 @@
   .setbtn{flex:1;height:42px;font-size:12px;border-radius:9px;background:var(--panel2);border-color:transparent;color:var(--dim)}
   .setbtn.on{background:var(--dawn);color:#fff;border-color:var(--dawn);box-shadow:0 2px 8px rgba(75,92,232,.22)}
   .kg{width:66px;text-align:center;height:40px}
+  /* 수면 시간 칸 — iPhone Safari는 time 입력에 자체 최소 너비를 줘서 칸 밖으로 넘친다(11/4) → 기본 모양을 끄고 칸 너비에 맞춘다 */
+  .tinp{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;text-align:center}
+  .tinp::-webkit-date-and-time-value{text-align:center;margin:0}
   .hscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .hscroll::-webkit-scrollbar{display:none}
   .inp{height:40px;font-size:13px;padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--mist)}
@@ -1350,12 +1353,12 @@ function renderToday(){
   wi.placeholder="kg"; wi.inputMode="decimal"; wi.value = r.bodyWeight || "";
   wi.oninput = ev => { const r2 = rec(); r2.bodyWeight = ev.target.value; persist(); };
   // 체중 칸 옆에 잠든·일어난 시각 (11/4 — 못 일어나 운동을 거르는 날이 잦아 수면을 같이 본다)
-  const wrow = document.createElement("div"); wrow.style.cssText = "display:grid;grid-template-columns:76px 1fr 1fr;gap:8px;align-items:end;margin-top:8px";
-  const field = (label, el) => { const f = document.createElement("label"); f.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim);min-width:0"; f.append(label, el); return f; };
+  const wrow = document.createElement("div"); wrow.style.cssText = "display:grid;grid-template-columns:72px minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end;margin-top:10px";
+  const field = (label, el) => { const f = document.createElement("label"); f.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim);min-width:0;overflow:hidden"; f.append(label, el); return f; };
   wi.style.cssText = "width:100%;height:44px;font-size:16px;margin:0;box-sizing:border-box";
   const timeInp = key => {
-    const t = document.createElement("input"); t.type = "time"; t.className = "kg";
-    t.style.cssText = "width:100%;min-width:0;height:44px;font-size:14px;margin:0;padding:0 6px;box-sizing:border-box"; t.value = r.sleep[key] || "";
+    const t = document.createElement("input"); t.type = "time"; t.className = "kg tinp";
+    t.style.cssText = "height:44px;font-size:14px;margin:0;padding:0 4px"; t.value = r.sleep[key] || "";
     t.onchange = ev => mutate(x => { x.sleep[key] = ev.target.value; });
     return t;
   };
