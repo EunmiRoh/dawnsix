@@ -41,8 +41,8 @@
   .setbtn.on{background:var(--dawn);color:#fff;border-color:var(--dawn);box-shadow:0 2px 8px rgba(75,92,232,.22)}
   .kg{width:66px;text-align:center;height:40px}
   /* 수면 시간 칸 — iPhone Safari는 time 입력에 자체 최소 너비를 줘서 칸 밖으로 넘친다(11/4) → 기본 모양을 끄고 칸 너비에 맞춘다 */
-  .tinp{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;text-align:center}
-  .tinp::-webkit-date-and-time-value{text-align:center;margin:0}
+  .tbox{position:relative;height:44px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--mist);box-sizing:border-box;min-width:0;overflow:hidden}
+  .tbox input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:0;font-size:16px;-webkit-appearance:none;appearance:none}
   .hscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .hscroll::-webkit-scrollbar{display:none}
   .inp{height:40px;font-size:13px;padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--mist)}
@@ -1356,13 +1356,21 @@ function renderToday(){
   const wrow = document.createElement("div"); wrow.style.cssText = "display:grid;grid-template-columns:72px minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end;margin-top:10px";
   const field = (label, el) => { const f = document.createElement("label"); f.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim);min-width:0;overflow:hidden"; f.append(label, el); return f; };
   wi.style.cssText = "width:100%;height:44px;font-size:16px;margin:0;box-sizing:border-box";
+  // 시간 칸 — iPhone 기본 시간 칸은 글자를 위쪽에 붙여 그려서(11/5 사용자: 가운데 정렬 요청),
+  // 보이는 칸은 직접 그려 가운데 정렬하고 그 위에 투명한 시간 입력을 덮는다(누르면 아이폰 시간 고르기가 그대로 뜸)
+  const fmtTime = v => { const m = toMin(v); if(m === null) return ""; const h = Math.floor(m / 60), mm = String(m % 60).padStart(2, "0");
+    return `${h < 12 ? "오전" : "오후"} ${h % 12 || 12}:${mm}`; };
   const timeInp = key => {
-    const t = document.createElement("input"); t.type = "time"; t.className = "kg tinp";
-    t.style.cssText = "height:44px;font-size:14px;margin:0;padding:0 4px"; t.value = r.sleep[key] || "";
+    const box = document.createElement("div"); box.className = "tbox";
+    const shown = document.createElement("span"); shown.textContent = fmtTime(r.sleep[key]) || "선택";
+    if(!r.sleep[key]) shown.style.color = "var(--dim)";
+    const t = document.createElement("input"); t.type = "time"; t.value = r.sleep[key] || "";
+    t.setAttribute("aria-label", key === "wake" ? "일어난 시간" : "잠든 시간");
     t.onchange = ev => mutate(x => { x.sleep[key] = ev.target.value; });
-    return t;
+    box.append(shown, t);
+    return box;
   };
-  wrow.append(field("체중", wi), field("잠든 시간", timeInp("bed")), field("일어난 시간", timeInp("wake")));
+  wrow.append(field("체중", wi), field("일어난 시간", timeInp("wake")), field("잠든 시간(어젯밤)", timeInp("bed")));
   w.appendChild(wrow);
   // 잘 때 속 — 소화가 얼마나 됐는지
   const drow = document.createElement("div"); drow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:10px";
@@ -1876,7 +1884,6 @@ function renderTrend(){
       const h = Math.round(12 + 16 * Math.max(ratio, r?.arrived || sessionCount(r) ? .5 : 0));
       box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:${h}px;border-radius:5px;background:${HC.gym.solid}"></div></div>`;
     }
-    else if(k >= FLEX_FROM) box = tag("");                                          // 11/3부터: 안 간 날은 실패 표시 없이 빈칸 (주 3회 목표로 본다)
     else box = `<div style="height:28px;display:flex;align-items:flex-end"><div style="width:100%;height:16px;border-radius:5px;border:1.5px dashed ${HC.gym.fg};opacity:.55"></div></div>`;
     const yoga = r?.yoga?.done ? "요가" : "";
     return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">${box}
@@ -1936,7 +1943,7 @@ function renderTrend(){
   // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
   const nw = s => `<span style="white-space:nowrap">${s}</span>`;
   document.getElementById("tlegend").innerHTML = view.length ? `<div class="muted" style="font-size:10.5px;line-height:1.7;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
-      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 못 한 날(~11/2)`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
+      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 안 한 날`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
       <div>${nw(`단백질 <span style="color:${HC.prot.fg}">┅</span> 목표 ${GOAL}g`)} · ${nw(`배변 <b style="color:${HC.stool.fg}">${sgap===null?"정상 기록 없음":sgap===0?"오늘 정상":`정상 후 ${sgap}일`}</b>`)} ${nw(`<span style="color:${HC.stool.solid}">■</span> 정상`)} ${nw(`<span style="color:${HC.stool.fg}">▣</span> 딱딱`)} ${nw(`<span style="color:${HC.stool.fg}">□</span> 무름`)}</div>
       <div>${nw(`수면 <b style="color:${HC.sleep.fg}">${sl7avg === null ? "기록 없음" : `최근 7일 평균 ${sl7avg}시간`}</b>`)} · ${nw(`<span style="color:${HC.sleep.fg}">┅</span> ${SLEEP_GOAL}시간`)} · ${nw(`잘 때 속 <span style="color:${HC.digest.solid}">■</span> 편함`)} ${nw(`<span style="color:${HC.digest.fg}">▣</span> 조금 남음`)} ${nw(`<span style="color:${HC.digest.fg}">□</span> 더부룩`)}</div>
     </div>` : "";
