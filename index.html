@@ -304,8 +304,8 @@
             <div class="clab">운동</div><div id="gchart"></div>
             <div class="clab">단백질 (g)</div><div id="pchart"></div>
             <div class="clab">배변</div><div id="schart"></div>
-            <div class="clab">수면 (시간)</div><div id="slchart"></div>
-            <div class="clab">잘 때 속</div><div id="dgchart"></div>
+            <div class="clab">수면 (전날 밤 → 그날 아침, 시간)</div><div id="slchart"></div>
+            <div class="clab">잘 때 속 (전날 밤)</div><div id="dgchart"></div>
             <div id="tlegend"></div>
           </div>
         </div>
@@ -682,12 +682,13 @@ const HC = {
   sleep: { fg:"#8A5C86", bg:"#F5EDF4", solid:"#B48DB0", light:"#E3CFE1" },   // 수면 — 더스티 모브 (11/4)
   digest:{ fg:"#3E8791", bg:"#E4F2F3", solid:"#6FB0B8" }    // 잘 때 속(소화) — 차분한 청록 (11/4)
 };
-// 수면 — 그날 아침 기록에 "어젯밤 잠든 시각·오늘 일어난 시각·잘 때 속"을 같이 둔다 (체중 재는 시간에 한 번에 입력)
+// 수면 — 일어난 시각은 그날 아침 기록에, 잠든 시각·잘 때 속은 **그날 밤 기록**에 둔다 (11/6~, 사용자: 잠든 시간도 그날 입력)
+// 수면 시간 = 전날 기록의 잠든 시각 → 그날 기록의 일어난 시각. 자정 넘어(05시 전) 넣은 잠든 시각은 전날 밤으로 저장(bedKeyFor)
 const SLEEP_GOAL = 7;
 const DIGEST = [["ok","편함"],["some","조금 남음"],["full","더부룩"]];
 const toMin = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : null; };
-function sleepHours(r){
-  const b = toMin(r?.sleep?.bed), w = toMin(r?.sleep?.wake);
+function sleepHoursOf(key){
+  const b = toMin(log[addDays(key, -1)]?.sleep?.bed), w = toMin(log[key]?.sleep?.wake);
   if(b === null || w === null) return null;
   let m = w - b; if(m <= 0) m += 1440;          // 자정 넘겨 잔 날
   return m > 16 * 60 ? null : Math.round(m / 6) / 10;   // 16시간 넘으면 잘못 넣은 것으로 보고 뺌
@@ -1360,30 +1361,43 @@ function renderToday(){
   // 보이는 칸은 직접 그려 가운데 정렬하고 그 위에 투명한 시간 입력을 덮는다(누르면 아이폰 시간 고르기가 그대로 뜸)
   const fmtTime = v => { const m = toMin(v); if(m === null) return ""; const h = Math.floor(m / 60), mm = String(m % 60).padStart(2, "0");
     return `${h < 12 ? "오전" : "오후"} ${h % 12 || 12}:${mm}`; };
-  const timeInp = key => {
+  // 잠든 시각·잘 때 속은 "그날 밤" 기록 — 오늘 화면을 자정 넘어 새벽(05시 전)에 열었으면 아직 지난밤이므로 전날 기록에
+  const nightKey = (dateKey === keyOf(new Date()) && new Date().getHours() < 5) ? addDays(dateKey, -1) : dateKey;
+  const nightRec = () => { if(!log[nightKey]) log[nightKey] = blank(); const n = log[nightKey]; n.sleep = n.sleep || {bed:"",wake:"",digest:null}; return n; };
+  const setNight = fn => { fn(nightRec().sleep); persist(); render(); };
+  const nightSleep = log[nightKey]?.sleep || {bed:"",wake:"",digest:null};
+  const timeInp = (key, val, save) => {
     const box = document.createElement("div"); box.className = "tbox";
-    const shown = document.createElement("span"); shown.textContent = fmtTime(r.sleep[key]) || "선택";
-    if(!r.sleep[key]) shown.style.color = "var(--dim)";
-    const t = document.createElement("input"); t.type = "time"; t.value = r.sleep[key] || "";
+    const shown = document.createElement("span"); shown.textContent = fmtTime(val) || "선택";
+    if(!val) shown.style.color = "var(--dim)";
+    const t = document.createElement("input"); t.type = "time"; t.value = val || "";
     t.setAttribute("aria-label", key === "wake" ? "일어난 시간" : "잠든 시간");
-    t.onchange = ev => mutate(x => { x.sleep[key] = ev.target.value; });
+    t.onchange = ev => save(ev.target.value);
     box.append(shown, t);
     return box;
   };
-  wrow.append(field("체중", wi), field("일어난 시간", timeInp("wake")), field("잠든 시간(어젯밤)", timeInp("bed")));
+  const nightLab = nightKey === dateKey ? (dateKey === keyOf(new Date()) ? "잠든 시간(오늘 밤)" : "잠든 시간(그날 밤)") : "잠든 시간(지난밤)";
+  wrow.append(field("체중", wi),
+    field("일어난 시간", timeInp("wake", r.sleep.wake, v => mutate(x => { x.sleep.wake = v; }))),
+    field(nightLab, timeInp("bed", nightSleep.bed, v => setNight(sl => { sl.bed = v; }))));
   w.appendChild(wrow);
   // 잘 때 속 — 소화가 얼마나 됐는지
   const drow = document.createElement("div"); drow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:10px";
-  drow.innerHTML = `<span style="font-size:12px;color:var(--dim);flex:0 0 auto">잘 때 속</span>`;
+  drow.innerHTML = `<span style="font-size:12px;color:var(--dim);flex:0 0 auto">${nightKey === dateKey && dateKey === keyOf(new Date()) ? "오늘 밤 잘 때 속" : "잘 때 속"}</span>`;
   const dbtns = document.createElement("div"); dbtns.className = "setrow"; dbtns.style.cssText = "flex:1;margin:0";
   DIGEST.forEach(([id, label]) => {
-    const b = document.createElement("button"); b.className = "setbtn" + (r.sleep.digest === id ? " on" : ""); b.textContent = label;
-    if(r.sleep.digest === id){ b.style.background = HC.digest.solid; b.style.borderColor = HC.digest.solid; b.style.color = "#fff"; b.style.boxShadow = "none"; }
-    b.onclick = () => mutate(x => { x.sleep.digest = x.sleep.digest === id ? null : id; });
+    const b = document.createElement("button"); b.className = "setbtn" + (nightSleep.digest === id ? " on" : ""); b.textContent = label;
+    if(nightSleep.digest === id){ b.style.background = HC.digest.solid; b.style.borderColor = HC.digest.solid; b.style.color = "#fff"; b.style.boxShadow = "none"; }
+    b.onclick = () => setNight(sl => { sl.digest = sl.digest === id ? null : id; });
     dbtns.appendChild(b);
   });
   drow.appendChild(dbtns); w.appendChild(drow);
-  const sh0 = sleepHours(r);
+  const sh0 = sleepHoursOf(dateKey);
+  if(sh0 === null && r.sleep.wake && !log[addDays(dateKey, -1)]?.sleep?.bed){
+    const sn = document.createElement("div"); sn.className = "muted"; sn.style.cssText = "font-size:12px;margin-top:8px";
+    sn.textContent = "어젯밤 잠든 시간은 어제 날짜에 넣어요. 오늘부터는 자기 전에 '잠든 시간(오늘 밤)'을 넣어 주세요.";
+    w.appendChild(sn);
+  }
   if(sh0 !== null){
     const sn = document.createElement("div"); sn.className = "muted"; sn.style.cssText = "font-size:12px;margin-top:8px";
     sn.innerHTML = `어젯밤 <b style="color:${HC.sleep.fg}">${sh0}시간</b> 잤어요.` + (sh0 < 6
@@ -1913,7 +1927,7 @@ function renderTrend(){
     : `<div class="muted" style="font-size:13px">배변을 기록하면 여기에 표시됩니다.</div>`;
 
   // 수면 — 막대(시간), 7시간 점선. 기록 없는 날은 빈칸
-  const slv = view.map(k => sleepHours(log[k]));
+  const slv = view.map(k => sleepHoursOf(k));   // 그날 아침 일어난 시각 − 전날 밤 잠든 시각
   const slH = 50, slBase = slH - 4, slTop = Math.max(10, ...slv.filter(v => v !== null)) , slSpan = slBase - 12;
   const slGy = slBase - (SLEEP_GOAL / slTop) * slSpan;
   document.getElementById("slchart").innerHTML = slv.some(v => v !== null)
@@ -1929,7 +1943,7 @@ function renderTrend(){
   // 잘 때 속 — 배변처럼 칸으로: 편함 = 꽉 찬 칸, 조금 남음 = 연한 칸+점선, 더부룩 = 빈칸+점선. 날짜는 맨 아래 여기에만
   document.getElementById("dgchart").innerHTML = view.length
     ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(view.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + view.map(k => {
-        const d = log[k]?.sleep?.digest;
+        const d = log[addDays(k, -1)]?.sleep?.digest;   // 수면 막대와 같은 밤(전날 밤)을 같은 칸에
         const bg = d === "ok" ? HC.digest.solid : d === "some" ? HC.digest.bg : "transparent";
         const bd = d === "ok" ? `1.5px solid ${HC.digest.solid}` : d ? `1.5px dashed ${HC.digest.fg}` : "1.5px solid var(--line)";
         return `<div style="width:${CH.day}px;flex:0 0 ${CH.day}px;text-align:center;padding:0 3px;box-sizing:border-box">
@@ -1937,7 +1951,7 @@ function renderTrend(){
           <div class="muted" style="font-size:9px;margin-top:3px">${lab(k)}</div></div>`;
       }).join("") + `</div></div>`
     : "";
-  const sl7 = view.filter(k => k > addDays(keyOf(new Date()), -7)).map(k => sleepHours(log[k])).filter(v => v !== null);
+  const sl7 = view.filter(k => k > addDays(keyOf(new Date()), -7)).map(k => sleepHoursOf(k)).filter(v => v !== null);
   const sl7avg = sl7.length ? (sl7.reduce((a, b) => a + b, 0) / sl7.length).toFixed(1) : null;
 
   // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
@@ -2204,7 +2218,7 @@ function renderHistory(days, todayKey){
     if(r.yoga?.done) c.push(chip("요가", "gym"));
     if(r.backup) c.push(chip(isGymDay(dow, k) ? "대체" : "집운동", "gym"));
     if(r.off) c.push(chip("회복·휴식"));
-    const slh = sleepHours(r);
+    const slh = sleepHoursOf(k);
     if(slh !== null) c.push(chip(`수면 ${slh}h`, "sleep", slh >= SLEEP_GOAL ? "full" : slh < 6 ? "weak" : undefined));
     if(r.sleep?.digest === "full") c.push(chip("더부룩", "digest", "weak"));
     if(r.lax > 0){
