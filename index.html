@@ -1382,11 +1382,12 @@ function renderToday(){
     field(nightLab, timeInp("bed", nightSleep.bed, v => setNight(sl => { sl.bed = v; }))));
   w.appendChild(wrow);
   // 잘 때 속 — 소화가 얼마나 됐는지
-  const drow = document.createElement("div"); drow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:10px";
-  drow.innerHTML = `<span style="font-size:12px;color:var(--dim);flex:0 0 auto">${nightKey === dateKey && dateKey === keyOf(new Date()) ? "오늘 밤 잘 때 속" : "잘 때 속"}</span>`;
-  const dbtns = document.createElement("div"); dbtns.className = "setrow"; dbtns.style.cssText = "flex:1;margin:0";
+  // 11/5: 라벨이 "오늘 밤 잘 때 속"으로 길어져 버튼이 좁아지고 "조금 남음"이 두 줄이 됨 → 라벨은 위 줄, 버튼은 한 줄 전체 폭·줄바꿈 없음
+  const drow = document.createElement("div"); drow.style.cssText = "display:flex;flex-direction:column;gap:4px;margin-top:10px";
+  drow.innerHTML = `<span style="font-size:11px;color:var(--dim)">${nightKey === dateKey && dateKey === keyOf(new Date()) ? "오늘 밤 잘 때 속" : "잘 때 속"}</span>`;
+  const dbtns = document.createElement("div"); dbtns.className = "setrow"; dbtns.style.cssText = "margin:0";
   DIGEST.forEach(([id, label]) => {
-    const b = document.createElement("button"); b.className = "setbtn" + (nightSleep.digest === id ? " on" : ""); b.textContent = label;
+    const b = document.createElement("button"); b.className = "setbtn" + (nightSleep.digest === id ? " on" : ""); b.textContent = label; b.style.whiteSpace = "nowrap";
     if(nightSleep.digest === id){ b.style.background = HC.digest.solid; b.style.borderColor = HC.digest.solid; b.style.color = "#fff"; b.style.boxShadow = "none"; }
     b.onclick = () => setNight(sl => { sl.digest = sl.digest === id ? null : id; });
     dbtns.appendChild(b);
