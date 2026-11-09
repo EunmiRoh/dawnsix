@@ -696,7 +696,7 @@ function dailyReview(key){
     [ef[3], "단백질", `${GOAL}g — 지금 ${pt}g · 끼니마다 단백질 먼저`, ""],
     [ef[4], "물", `텀블러 ${WATER_GOAL}번 — 지금 <b>${wt}</b>번`, `<div style="display:flex;gap:5px;margin-top:5px">${pill(false, `data-water="-1"`, "−")}${pill(false, `data-water="1"`, "+ 한 번 마심")}</div>`],
     [ef[5], "배변", `변비약 식후 1알 챙기기 — 배변 카드에 기록`, ""],
-    [ef[6], "속 편하게 자기", `저녁 일찍 가볍게 → 더부룩하지 않게 1시 전에 눕기 (잘 때 속 "편함")`, ""]
+    [ef[6], "속 편하게 자기", `저녁 일찍 가볍게 · 늦게 먹게 되면 국물·야식은 참기 → 1시 전에 눕기 (잘 때 속 "편함")`, ""]
   ];
   const cmp = n > ny ? `어제보다 <b>${n - ny}개 더</b> 노력했어요 👏` : n === ny && n ? `어제만큼 하고 있어요` : `아직 하루가 남았어요 — 하나만 더`;
   h += `<div style="margin-top:14px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:var(--dim)">오늘 노력</span>
