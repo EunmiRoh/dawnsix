@@ -1399,6 +1399,18 @@ function renderToday(){
     sn.textContent = "어젯밤 잠든 시간은 어제 날짜에 넣어요. 오늘부터는 자기 전에 '잠든 시간(오늘 밤)'을 넣어 주세요.";
     w.appendChild(sn);
   }
+  // 11/9: 아이폰 시간 칸에서 오전/오후를 잘못 골라(일어난 22:30, 잠든 13:30) 수면이 16시간 넘게 계산돼 그래프에서 빠짐 → 확인 안내
+  const pm = v => { const m = toMin(v); return m !== null && m >= 12 * 60; };
+  const odd = [];
+  if(r.sleep.wake && toMin(r.sleep.wake) >= 13 * 60) odd.push(`일어난 시간 ${fmtTime(r.sleep.wake)}`);
+  if(pm(nightSleep.bed) && toMin(nightSleep.bed) < 19 * 60) odd.push(`잠든 시간 ${fmtTime(nightSleep.bed)}`);
+  const pb = log[addDays(dateKey, -1)]?.sleep?.bed;
+  if(sh0 === null && r.sleep.wake && pb && !odd.length) odd.push(`어제 잠든 시간 ${fmtTime(pb)} → 오늘 일어난 시간 ${fmtTime(r.sleep.wake)}`);
+  if(odd.length){
+    const sn = document.createElement("div"); sn.style.cssText = `font-size:12px;margin-top:8px;color:${HC.sleep.fg}`;
+    sn.textContent = `${odd.join(" · ")} — 오전/오후가 맞는지 확인해 주세요. 16시간 넘게 계산되면 수면 그래프에서 빠져요.`;
+    w.appendChild(sn);
+  }
   if(sh0 !== null){
     const sn = document.createElement("div"); sn.className = "muted"; sn.style.cssText = "font-size:12px;margin-top:8px";
     sn.innerHTML = `어젯밤 <b style="color:${HC.sleep.fg}">${sh0}시간</b> 잤어요.` + (sh0 < 6
