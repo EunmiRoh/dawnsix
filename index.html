@@ -619,7 +619,7 @@ const kindOf = (dow, key) => (key && key < FLEX_FROM)
   : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null} });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null}, eat:null, water:0, morn:false });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -633,6 +633,12 @@ const WEEK_GOAL = 3;
 // 화·목 퇴근 후 19:30, 토 10:00. 바꾸면 캘린더 일정("💪 운동 약속")도 같이 바꿀 것
 const WORKOUT_PLAN = [{ dow:2, t:"19:30" }, { dow:4, t:"19:30" }, { dow:6, t:"10:00" }];
 const didWorkout = r => !!(r && (gymOK(r) || r.backup || (r.session && (r.session.am || r.session.pm))));
+// 하루 노력 5가지 (11/9 사용자: "적게 먹기(마운자로 때만큼)·운동·단백질·수분… 하루하루 전날보다 노력했네요")
+const WATER_GOAL = 6;   // 355ml 텀블러 6번 — 캘린더 물 알림(10:00~17:30, 90분 간격 6회)과 같음
+const EAT = [["less","마운자로 때만큼"],["normal","보통"],["more","많이"]];
+// 사용자 추가: 아침 올리브유 + 고체 레몬으로 시작, 배변 유지(변비약으로 개선), 더부룩한 채로 자지 않기
+const effortOf = r => [!!r?.morn, didWorkout(r), r?.eat === "less", proteinOf(r) >= GOAL, (r?.water || 0) >= WATER_GOAL, isGoodStool(r), r?.sleep?.digest === "ok"];
+const effortN = r => effortOf(r).filter(Boolean).length;
 // 오늘 시작 점검 카드 — 지키는 선(휴약 전 1주 평균 +1kg) · 어제 돌아보기 · 오늘 할 일 3개
 function dailyReview(key){
   const y = addDays(key, -1), r = log[key], ry = log[y];
@@ -648,7 +654,7 @@ function dailyReview(key){
     const col = d === null ? "var(--dim)" : d <= .5 ? "var(--sage)" : d <= 1 ? "var(--dawn)" : "var(--rose)";
     const word = d === null ? "" : d <= .5 ? "안전" : d <= 1 ? "선 가까이" : "선 넘음";
     h += `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel2)">
-      <div style="font-size:12px;color:var(--dim)">지키는 선 · 마운자로 4개월로 만든 몸 — 지금은 "더 빼기"보다 <b>"지키기"</b></div>
+      <div style="font-size:12px;color:var(--dim)">지키는 선 · 마운자로 4개월, <b>옷 한 치수 줄인 몸</b> — 지금은 "더 빼기"보다 <b>"지키기"</b></div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px"><span style="font-size:14px">1주 평균 <b>${now === null ? "—" : now.toFixed(1) + "kg"}</b>
         <span class="muted" style="font-size:12px"> · 휴약 전 ${pz.base.toFixed(1)} · 선 ${line.toFixed(1)}</span></span>
         ${word ? `<b style="flex:none;color:${col};font-size:13px">${word}${d !== null ? " " + sign(d) : ""}</b>` : ""}</div></div>`;
@@ -679,27 +685,39 @@ function dailyReview(key){
   h += rows.map(([a, b, n]) => `<div style="margin-top:9px"><div style="display:flex;gap:8px;align-items:baseline;font-size:13px"><span class="muted" style="font-size:12px;width:64px;flex:none">${a}</span><b style="font-weight:600">${b}</b></div>
     <div class="muted" style="font-size:12px;margin:2px 0 0 72px;line-height:1.45">${n}</div></div>`).join("");
 
-  // 3) 오늘 할 일 — 저절로 체크됨 (운동·단백질은 기록, 저녁은 오늘 밤 잘 때 속 "편함")
+  // 3) 오늘 노력 5가지 — 운동·단백질·저녁은 기록으로 저절로, 먹은 양·물은 여기서 바로 누름
   const plan = WORKOUT_PLAN.find(p => p.dow === parseKey(key).getDay());
-  const pt = proteinOf(r), done1 = didWorkout(r), done2 = pt >= GOAL, done3 = r?.sleep?.digest === "ok";
-  const todo = [
-    [done1, plan ? `${fmtHM(plan.t)} 약속 지키기 — 레그프레스 하나만 해도 성공` : `매일 한 번 움직이기 — 헬스 가볍게 또는 집에서 13분`],
-    [done2, `단백질 ${GOAL}g — 지금 ${pt}g · 끼니마다 단백질 먼저`],
-    [done3, `저녁은 일찍 가볍게 → 속 편하게 1시 전에 눕기`]
+  const ef = effortOf(r), n = ef.filter(Boolean).length, ny = effortN(ry), pt = proteinOf(r), wt = r?.water || 0;
+  const pill = (on, attr, label) => `<button ${attr} style="padding:4px 9px;border-radius:999px;font-size:12px;white-space:nowrap;${on ? `background:${HC.gym.solid};color:#fff;border:1px solid ${HC.gym.solid}` : `background:${HC.gym.bg};color:${HC.gym.fg};border:1px solid transparent`}">${label}</button>`;
+  const items = [
+    [ef[0], "아침 시작", [0, 6].includes(parseKey(key).getDay()) ? `올리브유 + 고체 레몬 — 주말 늦잠이어도 일어나자마자` : `올리브유 + 고체 레몬`, `<div style="display:flex;gap:5px;margin-top:5px">${pill(!!r?.morn, `data-morn="1"`, r?.morn ? "✓ 했어요" : "했어요")}</div>`],
+    [ef[1], "운동", plan ? `${fmtHM(plan.t)} 약속 — 레그프레스 하나만 해도 성공` : `매일 한 번 — 헬스 가볍게 또는 집에서 13분`, ""],
+    [ef[2], "적게 먹기", `오늘 먹은 양`, `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${EAT.map(([id, l]) => pill(r?.eat === id, `data-eat="${id}"`, l)).join("")}</div>`],
+    [ef[3], "단백질", `${GOAL}g — 지금 ${pt}g · 끼니마다 단백질 먼저`, ""],
+    [ef[4], "물", `텀블러 ${WATER_GOAL}번 — 지금 <b>${wt}</b>번`, `<div style="display:flex;gap:5px;margin-top:5px">${pill(false, `data-water="-1"`, "−")}${pill(false, `data-water="1"`, "+ 한 번 마심")}</div>`],
+    [ef[5], "배변", `변비약 식후 1알 챙기기 — 배변 카드에 기록`, ""],
+    [ef[6], "속 편하게 자기", `저녁 일찍 가볍게 · 늦게 먹게 되면 국물·야식은 참기 → 1시 전에 눕기 (잘 때 속 "편함")`, ""]
   ];
-  h += `<div style="margin-top:12px;font-size:12px;color:var(--dim)">오늘 할 일</div>` + todo.map(([ok, t]) =>
-    `<div style="display:flex;gap:8px;align-items:center;margin-top:5px;font-size:13px;${ok ? "color:var(--dim);text-decoration:line-through" : ""}">
-      <span style="flex:none;width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;${ok ? `background:${HC.gym.solid};color:#fff` : "border:1.5px solid var(--line)"}">${ok ? "✓" : ""}</span>${t}</div>`).join("");
+  const cmp = n > ny ? `어제보다 <b>${n - ny}개 더</b> 노력했어요 👏` : n === ny && n ? `어제만큼 하고 있어요` : `아직 하루가 남았어요 — 하나만 더`;
+  h += `<div style="margin-top:14px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:var(--dim)">오늘 노력</span>
+    <span style="font-size:13px"><b style="color:var(--dawn);font-size:16px">${n}</b><span class="muted">/${ef.length} · 어제 ${ny}</span></span></div>
+    <div style="font-size:13px;color:var(--dawn);margin-top:2px">${cmp}</div>` +
+    items.map(([ok, t, d, ctl]) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
+      <span style="flex:none;margin-top:1px;width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;${ok ? `background:${HC.gym.solid};color:#fff` : "border:1.5px solid var(--line)"}">${ok ? "✓" : ""}</span>
+      <div style="min-width:0;flex:1;font-size:13px"><b style="font-weight:600">${t}</b> <span class="muted" style="font-size:12px">${d}</span>${ctl}</div></div>`).join("");
 
   // 4) 한마디 — 어제 상태에 맞춰
   const bad = !didWorkout(ry) && (!isNaN(w0) && !isNaN(w1) && w0 - w1 >= .5);
-  const n = done1 + done2 + done3;
-  const msg = n === 3 ? "오늘 할 일 다 했어요. 이런 하루가 쌓이면 4개월이 지켜져요."
+  const msg = n === ef.length ? "오늘 다 했어요. 이런 하루가 쌓이면 4개월이 지켜져요."
+    : n > ny && n >= 4 ? "어제보다 나은 하루 — 이게 도로묵이 안 되는 방법이에요."
     : bad ? "어제는 어제예요. 무너진 건 하루뿐 — 오늘 하나만 지키면 다시 이어져요."
     : rest >= 3 ? "다시 시작하는 날이 제일 어려워요. 그래서 오늘은 \"가기만 하기\"가 목표예요."
-    : ["체중이 그대로여도 근육이 남으면 성공이에요.", "완벽한 하루보다 끊기지 않는 하루.", "오늘 움직인 10분이 4개월을 지켜요."][parseKey(key).getDate() % 3];
+    : ["체중이 그대로여도 근육이 남으면 성공이에요.", "완벽한 하루보다 끊기지 않는 하루.", "오늘 움직인 10분이 4개월을 지켜요.", "지키고 나면 다음은 옷 한 치수 더 — 더 예쁘고 건강해질 거예요."][parseKey(key).getDate() % 4];
   h += `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:13px;color:var(--dawn);font-weight:600">${msg}</div>`;
   c.innerHTML = h;
+  c.querySelectorAll("[data-morn]").forEach(b => b.onclick = () => mutate(x => { x.morn = !x.morn; }));
+  c.querySelectorAll("[data-eat]").forEach(b => b.onclick = () => mutate(x => { x.eat = x.eat === b.dataset.eat ? null : b.dataset.eat; }));
+  c.querySelectorAll("[data-water]").forEach(b => b.onclick = () => mutate(x => { x.water = Math.max(0, Math.min(15, (x.water || 0) + (+b.dataset.water))); }));
   return c;
 }
 // 어둡고 추운 날 — 헬스장 대신 집에서 짧게 (집 탭 "짧게" 코스를 바로 시작, 끝나면 대체 운동으로 체크)
@@ -720,6 +738,7 @@ function isEmptyDay(r, countInbody){
   if(countInbody !== false && r.labs && Object.keys(r.labs).length) return false;
   if(r.bodyWeight || r.arrived || r.backup || r.off || r.lax > 0) return false;
   if(r.sleep && (r.sleep.bed || r.sleep.wake || r.sleep.digest)) return false;
+  if(r.eat || r.water > 0 || r.morn) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
   if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
@@ -1125,6 +1144,9 @@ function rec(){
   if(r.lax === undefined) r.lax = null;
   r.laxAt = r.laxAt || {am:false,noon:false,pm:false};
   r.sleep = r.sleep || {bed:"",wake:"",digest:null};
+  if(r.eat === undefined) r.eat = null;      // 식사량 less|normal|more (11/9~)
+  if(r.water === undefined) r.water = 0;     // 물 컵 수 (355ml 텀블러, 11/9~)
+  if(r.morn === undefined) r.morn = false;   // 아침 루틴 — 올리브유 + 고체 레몬 (11/9~)
   return r;
 }
 function setsOf(r, id, kind){
