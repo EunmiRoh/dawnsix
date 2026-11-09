@@ -633,6 +633,75 @@ const WEEK_GOAL = 3;
 // 화·목 퇴근 후 19:30, 토 10:00. 바꾸면 캘린더 일정("💪 운동 약속")도 같이 바꿀 것
 const WORKOUT_PLAN = [{ dow:2, t:"19:30" }, { dow:4, t:"19:30" }, { dow:6, t:"10:00" }];
 const didWorkout = r => !!(r && (gymOK(r) || r.backup || (r.session && (r.session.am || r.session.pm))));
+// 오늘 시작 점검 카드 — 지키는 선(휴약 전 1주 평균 +1kg) · 어제 돌아보기 · 오늘 할 일 3개
+function dailyReview(key){
+  const y = addDays(key, -1), r = log[key], ry = log[y];
+  const w0 = parseFloat(r?.bodyWeight), w1 = parseFloat(ry?.bodyWeight);
+  const pz = pauseInfo(key), ci = cycleInfo(key);
+  const sign = d => (d > 0 ? "+" : d < 0 ? "−" : "±") + Math.abs(d).toFixed(1);
+  const c = document.createElement("div"); c.className = "card"; c.style.cssText = "margin-bottom:12px;padding:14px 16px";
+  let h = `<div class="row" style="align-items:baseline"><b style="font-size:15px">오늘 시작 점검</b><span class="muted" style="font-size:11px">어제(${fmtKey(y)})와 비교</span></div>`;
+
+  // 1) 지키는 선 — 4개월 동안 만든 몸을 지키는 게 지금 목표
+  if(pz && pz.base !== null){
+    const line = pz.base + 1, now = pz.now, d = now === null ? null : now - pz.base;
+    const col = d === null ? "var(--dim)" : d <= .5 ? "var(--sage)" : d <= 1 ? "var(--dawn)" : "var(--rose)";
+    const word = d === null ? "" : d <= .5 ? "안전" : d <= 1 ? "선 가까이" : "선 넘음";
+    h += `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel2)">
+      <div style="font-size:12px;color:var(--dim)">지키는 선 · 마운자로 4개월로 만든 몸 — 지금은 "더 빼기"보다 <b>"지키기"</b></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px"><span style="font-size:14px">1주 평균 <b>${now === null ? "—" : now.toFixed(1) + "kg"}</b>
+        <span class="muted" style="font-size:12px"> · 휴약 전 ${pz.base.toFixed(1)} · 선 ${line.toFixed(1)}</span></span>
+        ${word ? `<b style="flex:none;color:${col};font-size:13px">${word}${d !== null ? " " + sign(d) : ""}</b>` : ""}</div></div>`;
+  }
+
+  // 2) 어제 돌아보기
+  const rows = [];
+  if(!isNaN(w0) && !isNaN(w1)){
+    const d = w0 - w1;
+    let note = d >= .5 ? `하루 사이 늘어난 건 대부분 수분·음식 무게예요(지방 1kg ≈ 7,700kcal). 오늘 잘 보내면 2~3일 안에 내려와요.`
+             : d <= -.5 ? `어제보다 가벼워요. 근육 지키게 단백질은 그대로.` : `거의 그대로예요.`;
+    if(d >= .5 && ci && (ci.phase === "pre" || ci.phase === "period" || ci.phase === "late")) note += ` 생리 전후 붓기도 섞여 있어요.`;
+    rows.push(["체중", `${w0.toFixed(1)}kg <span style="color:${d >= .5 ? "var(--rose)" : d <= -.5 ? "var(--sage)" : "var(--dim)"}">(${sign(d)})</span>`, note]);
+  } else if(isNaN(w0)) rows.push(["체중", `<span class="muted">아직</span>`, `화장실 다녀와서 공복에 재 주세요. 숫자는 1주 평균으로 봐요.`]);
+  let rest = 0;
+  for(let k = y; rest < 30; k = addDays(k, -1)){ const x = log[k]; if(didWorkout(x) || x?.off || k < FLEX_FROM) break; rest++; }
+  rows.push(["어제 운동", didWorkout(ry) ? `<b style="color:${HC.gym.fg}">✓ 했어요</b>` : `<span style="color:var(--rose)">안 함</span>`,
+    didWorkout(ry) ? `이 흐름 그대로 오늘도.` : rest >= 2 ? `${rest}일째 쉬는 중 — 쉬는 날이 길수록 근육이 빠져요. 오늘 끊어요.` : `하루 쉰 건 괜찮아요. 오늘 다시.`]);
+  const py = proteinOf(ry);
+  rows.push(["어제 단백질", `<span style="color:${py >= GOAL ? HC.prot.fg : "var(--rose)"}">${py}g</span><span class="muted"> / ${GOAL}g</span>`,
+    py >= GOAL ? `목표 채웠어요.` : py ? `${GOAL - py}g 모자랐어요. 배고프면 단백질부터 — 포만감이 오래가요.` : `기록이 없어요.`]);
+  const sh = sleepHoursOf(key), dg = ry?.sleep?.digest;
+  if(sh !== null || dg){
+    const dl = DIGEST.find(x => x[0] === dg);
+    rows.push(["어젯밤", `${sh !== null ? sh + "시간" : ""}${dl ? `${sh !== null ? " · " : ""}<span style="color:${dg === "ok" ? HC.digest.fg : "var(--rose)"}">${dl[1]}</span>` : ""}`,
+      dg === "full" ? `더부룩하게 잤어요. 오늘은 잠들기 3시간 전에 저녁 끝내기.` : dg === "some" ? `속이 조금 남은 채 잤어요. 저녁을 30분만 당겨 봐요.` : sh !== null && sh < 6 ? `잠이 짧았어요. 오늘은 일찍 눕기.` : `잘 잤어요.`]);
+  }
+  h += rows.map(([a, b, n]) => `<div style="margin-top:9px"><div style="display:flex;gap:8px;align-items:baseline;font-size:13px"><span class="muted" style="font-size:12px;width:64px;flex:none">${a}</span><b style="font-weight:600">${b}</b></div>
+    <div class="muted" style="font-size:12px;margin:2px 0 0 72px;line-height:1.45">${n}</div></div>`).join("");
+
+  // 3) 오늘 할 일 — 저절로 체크됨 (운동·단백질은 기록, 저녁은 오늘 밤 잘 때 속 "편함")
+  const plan = WORKOUT_PLAN.find(p => p.dow === parseKey(key).getDay());
+  const pt = proteinOf(r), done1 = didWorkout(r), done2 = pt >= GOAL, done3 = r?.sleep?.digest === "ok";
+  const todo = [
+    [done1, plan ? `${fmtHM(plan.t)} 약속 지키기 — 레그프레스 하나만 해도 성공` : `매일 한 번 움직이기 — 헬스 가볍게 또는 집에서 13분`],
+    [done2, `단백질 ${GOAL}g — 지금 ${pt}g · 끼니마다 단백질 먼저`],
+    [done3, `저녁은 일찍 가볍게 → 속 편하게 1시 전에 눕기`]
+  ];
+  h += `<div style="margin-top:12px;font-size:12px;color:var(--dim)">오늘 할 일</div>` + todo.map(([ok, t]) =>
+    `<div style="display:flex;gap:8px;align-items:center;margin-top:5px;font-size:13px;${ok ? "color:var(--dim);text-decoration:line-through" : ""}">
+      <span style="flex:none;width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;${ok ? `background:${HC.gym.solid};color:#fff` : "border:1.5px solid var(--line)"}">${ok ? "✓" : ""}</span>${t}</div>`).join("");
+
+  // 4) 한마디 — 어제 상태에 맞춰
+  const bad = !didWorkout(ry) && (!isNaN(w0) && !isNaN(w1) && w0 - w1 >= .5);
+  const n = done1 + done2 + done3;
+  const msg = n === 3 ? "오늘 할 일 다 했어요. 이런 하루가 쌓이면 4개월이 지켜져요."
+    : bad ? "어제는 어제예요. 무너진 건 하루뿐 — 오늘 하나만 지키면 다시 이어져요."
+    : rest >= 3 ? "다시 시작하는 날이 제일 어려워요. 그래서 오늘은 \"가기만 하기\"가 목표예요."
+    : ["체중이 그대로여도 근육이 남으면 성공이에요.", "완벽한 하루보다 끊기지 않는 하루.", "오늘 움직인 10분이 4개월을 지켜요."][parseKey(key).getDate() % 3];
+  h += `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:13px;color:var(--dawn);font-weight:600">${msg}</div>`;
+  c.innerHTML = h;
+  return c;
+}
 // 어둡고 추운 날 — 헬스장 대신 집에서 짧게 (집 탭 "짧게" 코스를 바로 시작, 끝나면 대체 운동으로 체크)
 const fmtHM = t => { const m = toMin(t); if(m === null) return t; const h = Math.floor(m / 60), mm = m % 60; return `${h < 12 ? "오전" : h === 12 ? "낮" : "저녁"} ${h % 12 || 12}${mm ? ":" + String(mm).padStart(2, "0") : "시"}`; };
 function homeShortBtn(){
@@ -1147,6 +1216,10 @@ function renderToday(){
 
   const box = document.getElementById("today");
   box.innerHTML = "";
+
+  // 오늘 시작 점검 (11/9 사용자: 주말에 많이 먹고 더부룩하게 자고 운동도 안 해 살이 쪘다, 마운자로 4개월이 아깝지 않게
+  // 더 찌지 않고 유지해야 한다 → 매일 어제와 비교해 상태를 보고 오늘 할 일을 정하는 창). 오늘 화면에만.
+  if(dateKey >= FLEX_FROM && dateKey === keyOf(new Date())) box.appendChild(dailyReview(dateKey));
 
   // 이번 주 운동 — 매일이 아니라 주 3회를 목표로 (헬스·저녁 헬스·집 운동 모두 1회)
   if(dateKey >= FLEX_FROM){
