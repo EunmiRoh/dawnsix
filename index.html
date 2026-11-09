@@ -619,7 +619,7 @@ const kindOf = (dow, key) => (key && key < FLEX_FROM)
   : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null}, eat:null, water:0, morn:false });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null}, eat:null, water:0, morn:false, food:null });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -639,6 +639,68 @@ const EAT = [["less","마운자로 때만큼"],["normal","보통"],["more","많�
 // 사용자 추가: 아침 올리브유 + 고체 레몬으로 시작, 배변 유지(변비약으로 개선), 더부룩한 채로 자지 않기
 const effortOf = r => [!!r?.morn, didWorkout(r), r?.eat === "less", proteinOf(r) >= GOAL, (r?.water || 0) >= WATER_GOAL, isGoodStool(r), r?.sleep?.digest === "ok"];
 const effortN = r => effortOf(r).filter(Boolean).length;
+// 점심·저녁 (11/9 사용자 요청) — 메뉴·칼로리 대신 "언제·어떤 종류"만 눌러서 다음 날 체중·잘 때 속과 연결
+const FOOD_KIND = [["home","집밥·도시락"],["out","외식·배달"],["noodle","면·국물"],["light","간단히"]];
+const DINNER_AT = [["7","~7시"],["9","~9시"],["late","9시 이후"]];
+const FOOD_EXTRA = [["night","야식"],["sweet","단 것·간식"]];
+const FOOD_LABEL = Object.fromEntries([...FOOD_KIND, ...FOOD_EXTRA]);
+const foodHas = r => { const f = r?.food; return !!(f && (f.lunch?.length || f.dinner?.length || f.at || f.extra?.length || f.memo)); };
+// 그날 신호 — 다음 날 아침 체중을 올릴 만한 것
+const foodFlags = r => { const f = r?.food || {}; const all = [...(f.lunch || []), ...(f.dinner || [])];
+  return { noodle: all.includes("noodle"), late: f.at === "late", night: (f.extra || []).includes("night"), out: all.includes("out") }; };
+function foodSummary(r){
+  const f = r?.food; if(!foodHas(r)) return "";
+  const p = [];
+  if(f.lunch?.length) p.push("점심 " + f.lunch.map(x => FOOD_LABEL[x]).join("·"));
+  if(f.dinner?.length || f.at) p.push("저녁 " + [f.at ? DINNER_AT.find(x => x[0] === f.at)[1] : "", ...(f.dinner || []).map(x => FOOD_LABEL[x])].filter(Boolean).join(" · "));
+  if(f.extra?.length) p.push(f.extra.map(x => FOOD_LABEL[x]).join("·"));
+  return p.join(" / ");
+}
+// 내 패턴 — 신호가 있던 날 vs 없던 날, 다음 날 아침 체중 변화 평균 (각 2일 이상 쌓이면)
+function foodPatterns(){
+  const days = Object.keys(log).filter(k => foodHas(log[k])).sort(), out = [];
+  const delta = k => { const a = parseFloat(log[k]?.bodyWeight), b = parseFloat(log[addDays(k, 1)]?.bodyWeight); return isNaN(a) || isNaN(b) ? null : b - a; };
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length, sg = d => (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(1);
+  [["noodle","면·국물 먹은 날"],["late","9시 이후 저녁"],["night","야식 먹은 날"],["out","외식·배달"]].forEach(([id, lab]) => {
+    const yes = [], no = [];
+    days.forEach(k => { const d = delta(k); if(d === null) return; (foodFlags(log[k])[id] ? yes : no).push(d); });
+    if(yes.length >= 2 && no.length >= 2) out.push({ lab, y: avg(yes), n: avg(no), ny: yes.length, txt: `${lab} 다음 날 아침 <b>${sg(avg(yes))}kg</b> · 아닌 날 ${sg(avg(no))}kg <span class="muted">(${yes.length}번)</span>` });
+  });
+  // 늦은 저녁과 잘 때 속
+  const late = days.filter(k => foodFlags(log[k]).late && log[k].sleep?.digest);
+  if(late.length >= 2){ const bad = late.filter(k => log[k].sleep.digest !== "ok").length;
+    out.push({ txt: `9시 이후 저녁 먹은 날 잘 때 속 불편 <b>${bad}번 / ${late.length}번</b>` }); }
+  return out;
+}
+function foodCard(r){
+  if(!r.food) r.food = null;
+  const f = r.food || {};
+  const c = document.createElement("div"); c.className = "card"; c.style.marginTop = "12px";
+  const pill = (on, attr, label) => `<button ${attr} style="padding:5px 10px;border-radius:999px;font-size:12px;white-space:nowrap;${on ? `background:${HC.prot.solid};color:#fff;border:1px solid ${HC.prot.solid}` : `background:${HC.prot.bg};color:${HC.prot.fg};border:1px solid transparent`}">${label}</button>`;
+  const row = (lab, html) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:9px"><span class="muted" style="font-size:12px;width:40px;flex:none;padding-top:5px">${lab}</span><div style="display:flex;gap:5px;flex-wrap:wrap">${html}</div></div>`;
+  let h = `<div class="row"><div><b style="font-size:14px">점심·저녁</b><div class="muted" style="font-size:12px">메뉴 말고 "언제·어떤 종류"만 — 다음 날 체중·잘 때 속과 이어 봐요</div></div></div>`;
+  h += row("점심", FOOD_KIND.map(([id, l]) => pill((f.lunch || []).includes(id), `data-f="lunch" data-v="${id}"`, l)).join(""));
+  h += row("저녁", DINNER_AT.map(([id, l]) => pill(f.at === id, `data-at="${id}"`, l)).join("") + `<span style="flex-basis:100%;height:0"></span>` +
+    FOOD_KIND.map(([id, l]) => pill((f.dinner || []).includes(id), `data-f="dinner" data-v="${id}"`, l)).join(""));
+  h += row("그 밖에", FOOD_EXTRA.map(([id, l]) => pill((f.extra || []).includes(id), `data-f="extra" data-v="${id}"`, l)).join(""));
+  h += `<input class="inp" data-memo placeholder="메모 (선택) — 예: 사발면 반 개, 국물까지" style="width:100%;margin-top:10px;height:36px;font-size:13px" value="${(f.memo || "").replace(/"/g, "&quot;")}">`;
+  const fl = foodFlags(r), tips = [];
+  if(fl.noodle) tips.push("면·국물은 국물을 남기면 다음 날 붓기가 훨씬 덜해요.");
+  if(fl.late || fl.night) tips.push("늦게 먹은 날은 물 한 잔 더, 잠들기까지 시간을 두세요.");
+  if(tips.length) h += `<div style="font-size:12px;margin-top:8px;color:${HC.prot.fg}">${tips.join(" ")}</div>`;
+  const pat = foodPatterns();
+  h += `<div style="margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:12px"><span class="muted">내 패턴</span>` +
+    (pat.length ? pat.map(x => `<div style="margin-top:3px">${x.txt}</div>`).join("")
+      : `<div class="muted" style="margin-top:3px">며칠 쌓이면 "면·국물 먹은 다음 날 +0.6kg"처럼 보여 드려요.</div>`) + `</div>`;
+  c.innerHTML = h;
+  const ed = fn => mutate(x => { const g = x.food || { lunch:[], dinner:[], at:null, extra:[], memo:"" };
+    g.lunch = g.lunch || []; g.dinner = g.dinner || []; g.extra = g.extra || []; fn(g); x.food = foodHas({ food:g }) ? g : null; });
+  c.querySelectorAll("[data-f]").forEach(b => b.onclick = () => ed(g => { const a = g[b.dataset.f], v = b.dataset.v, i = a.indexOf(v); i >= 0 ? a.splice(i, 1) : a.push(v); }));
+  c.querySelectorAll("[data-at]").forEach(b => b.onclick = () => ed(g => { g.at = g.at === b.dataset.at ? null : b.dataset.at; }));
+  const mi = c.querySelector("[data-memo]");
+  mi.onchange = () => ed(g => { g.memo = mi.value.trim().slice(0, 120); });
+  return c;
+}
 // 오늘 시작 점검 카드 — 지키는 선(휴약 전 1주 평균 +1kg) · 어제 돌아보기 · 오늘 할 일 3개
 function dailyReview(key){
   const y = addDays(key, -1), r = log[key], ry = log[y];
@@ -676,6 +738,11 @@ function dailyReview(key){
   const py = proteinOf(ry);
   rows.push(["어제 단백질", `<span style="color:${py >= GOAL ? HC.prot.fg : "var(--rose)"}">${py}g</span><span class="muted"> / ${GOAL}g</span>`,
     py >= GOAL ? `목표 채웠어요.` : py ? `${GOAL - py}g 모자랐어요. 배고프면 단백질부터 — 포만감이 오래가요.` : `기록이 없어요.`]);
+  if(foodHas(ry)){
+    const fl = foodFlags(ry), why = [fl.late && "늦은 저녁", fl.night && "야식", fl.noodle && "면·국물"].filter(Boolean);
+    rows.push(["어제 식사", `<span style="font-weight:500;font-size:12px">${foodSummary(ry)}</span>`,
+      why.length ? `${why.join("·")} — ${!isNaN(w0) && !isNaN(w1) && w0 - w1 >= .3 ? "오늘 아침 체중이 오른 이유예요(물 무게). 물 많이 마시면 빠져요." : "다음 날 붓기 쉬워요. 오늘은 물 한 번 더."}` : `가볍게 잘 먹었어요.`]);
+  }
   const sh = sleepHoursOf(key), dg = ry?.sleep?.digest;
   if(sh !== null || dg){
     const dl = DIGEST.find(x => x[0] === dg);
@@ -739,6 +806,7 @@ function isEmptyDay(r, countInbody){
   if(r.bodyWeight || r.arrived || r.backup || r.off || r.lax > 0) return false;
   if(r.sleep && (r.sleep.bed || r.sleep.wake || r.sleep.digest)) return false;
   if(r.eat || r.water > 0 || r.morn) return false;
+  if(foodHas(r)) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
   if(r.cycle && (r.cycle.start || r.cycle.end)) return false;
@@ -1147,6 +1215,7 @@ function rec(){
   if(r.eat === undefined) r.eat = null;      // 식사량 less|normal|more (11/9~)
   if(r.water === undefined) r.water = 0;     // 물 컵 수 (355ml 텀블러, 11/9~)
   if(r.morn === undefined) r.morn = false;   // 아침 루틴 — 올리브유 + 고체 레몬 (11/9~)
+  if(r.food === undefined) r.food = null;    // 점심·저녁 한 번 누르기 기록 (11/9~) — foodRec()
   return r;
 }
 function setsOf(r, id, kind){
@@ -1839,6 +1908,7 @@ function renderToday(){
   note.textContent = "60~70g만 채운 날도 성공입니다. 물리는 건 돌려 가며 — 우유·치즈·참치·순두부처럼 손 안 가는 것부터. 밥은 반드시 드세요 — 탄수화물이 부족하면 단백질이 연료로 타서 근육이 빠집니다.";
   pw.appendChild(note);
   box.appendChild(pw);
+  box.appendChild(foodCard(r));
 
 
   // 저장하기 / 수정하기
