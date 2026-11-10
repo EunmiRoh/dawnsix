@@ -1338,7 +1338,7 @@ function renderToday(){
     if(ibs.length){
       const best = ibs.reduce((a, b) => b.v > a.v ? b : a), last = ibs[ibs.length - 1], md = k => { const d = parseKey(k); return `${d.getMonth()+1}/${d.getDate()}`; };
       goal = `<div class="muted" style="font-size:12px;margin-top:6px">왜 하나요 — 골격근량 <b style="color:${HC.ib.fg}">${last.v}kg</b>(${md(last.k)})` +
-        (best.v > last.v ? ` → 운동 꾸준히 하던 ${md(best.k)} 최고 <b style="color:${HC.ib.fg}">${best.v}kg</b>으로 다시` : ` 지키기 · 지금이 최고 기록`) + `. 체중보다 근육.</div>`;
+        (best.v > last.v ? ` → 최고 기록 <b style="color:${HC.ib.fg}">${best.v}kg</b>(${md(best.k)})까지 다시 올리기` : ` 지키기 · 지금이 최고 기록`) + `. 체중보다 근육.</div>`;
     }
     wc.insertAdjacentHTML("beforeend", `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><span class="muted" style="font-size:11px">약속</span>${chips}</div>${promise}${goal}`);
     box.appendChild(wc);
@@ -1469,20 +1469,15 @@ function renderToday(){
     const row = document.createElement("div"); row.style.display="flex"; row.style.gap="8px";
     ["1탄","2탄"].forEach(part => {
       const b2 = document.createElement("button");
-      const on = r.yoga.part === part;
+      const on = r.yoga.part === part && r.yoga.done;   // 11/10: 고르기만 한 상태(완료 전)가 칠해져 기록된 것처럼 보였음 → 완료일 때만 칠함
       b2.style.flex = "1"; b2.style.height = "44px";
       if(on){ b2.style.background="var(--sage)"; b2.style.color="#fff"; b2.style.borderColor="var(--sage)"; }
-      b2.textContent = on && r.yoga.done ? `✓ ${part} 했어요` : `${part} 했어요`;
-      b2.onclick = () => mutate(x => { if(on && x.yoga.done){ x.yoga.part = null; x.yoga.done = false; } else { x.yoga.part = part; x.yoga.done = true; } });   // 11/10: 1탄만 고르고 완료를 안 눌러 기록이 안 남음 → 고르면 바로 완료
+      b2.textContent = on ? `✓ ${part} 했어요` : `${part} 했어요`;
+      b2.onclick = () => mutate(x => { if(on){ x.yoga.part = null; x.yoga.done = false; } else { x.yoga.part = part; x.yoga.done = true; } });   // 11/10: 1탄만 고르고 완료를 안 눌러 기록이 안 남음 → 고르면 바로 완료
       row.appendChild(b2);
     });
     c.appendChild(row);
-    const done = document.createElement("button");
-    done.style.cssText = "width:100%;height:48px;margin-top:10px;font-weight:700;border-color:var(--sage);color:var(--sage)";
-    if(r.yoga.done){ done.style.background="var(--sage)"; done.style.color="#fff"; }
-    done.textContent = r.yoga.done ? "완료" : "다 했으면 누르기";
-    done.onclick = () => mutate(x => { x.yoga.done = !x.yoga.done; });
-    c.appendChild(done);
+    // 11/10: "다 했으면 누르기"는 1탄·2탄 버튼과 겹쳐 헷갈림 → 없앰 (예전에 완료만 누른 기록은 그대로 운동 1회)
     box.appendChild(c);
   }
 
