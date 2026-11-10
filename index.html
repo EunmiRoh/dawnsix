@@ -632,7 +632,7 @@ const WEEK_GOAL = 3;
 // 운동 약속 (11/9 사용자: "마음이 헤이해져 마음을 다잡을 조치" → 요일·시각을 정해 Google 캘린더에도 반복 일정으로 넣음)
 // 화·목 퇴근 후 19:30, 토 10:00. 바꾸면 캘린더 일정("💪 운동 약속")도 같이 바꿀 것
 const WORKOUT_PLAN = [{ dow:2, t:"19:30" }, { dow:4, t:"19:30" }, { dow:6, t:"10:00" }];
-const didWorkout = r => !!(r && (gymOK(r) || r.backup || (r.session && (r.session.am || r.session.pm))));
+const didWorkout = r => !!(r && (gymOK(r) || r.backup || r.yoga?.done || (r.session && (r.session.am || r.session.pm))));   // 11/10: 옥주현요가도 1회
 // 하루 노력 5가지 (11/9 사용자: "적게 먹기(마운자로 때만큼)·운동·단백질·수분… 하루하루 전날보다 노력했네요")
 const WATER_GOAL = 6;   // 355ml 텀블러 6번 — 캘린더 물 알림(10:00~17:30, 90분 간격 6회)과 같음
 const EAT = [["less","마운자로 때만큼"],["normal","보통"],["more","많이"]];
@@ -1465,15 +1465,15 @@ function renderToday(){
     const c = document.createElement("div"); c.className = "card";
     c.style.marginTop = "16px";
     c.innerHTML = `<b style="font-size:14px">옥주현요가 <span class="muted" style="font-weight:400;font-size:12px">· 선택</span></b>
-      <div class="muted" style="font-size:12px;margin:4px 0 10px">하고 싶은 날 하세요. 안 해도 그날은 실패가 아닙니다.</div>`;
+      <div class="muted" style="font-size:12px;margin:4px 0 10px">한 날 누르면 운동 1회로 쳐요. 안 해도 그날은 실패가 아닙니다.</div>`;
     const row = document.createElement("div"); row.style.display="flex"; row.style.gap="8px";
     ["1탄","2탄"].forEach(part => {
       const b2 = document.createElement("button");
       const on = r.yoga.part === part;
       b2.style.flex = "1"; b2.style.height = "44px";
       if(on){ b2.style.background="var(--sage)"; b2.style.color="#fff"; b2.style.borderColor="var(--sage)"; }
-      b2.textContent = part;
-      b2.onclick = () => mutate(x => { x.yoga.part = on ? null : part; });
+      b2.textContent = on && r.yoga.done ? `✓ ${part} 했어요` : `${part} 했어요`;
+      b2.onclick = () => mutate(x => { if(on && x.yoga.done){ x.yoga.part = null; x.yoga.done = false; } else { x.yoga.part = part; x.yoga.done = true; } });   // 11/10: 1탄만 고르고 완료를 안 눌러 기록이 안 남음 → 고르면 바로 완료
       row.appendChild(b2);
     });
     c.appendChild(row);
@@ -2090,8 +2090,8 @@ function renderTrend(){
   const gcell = k => {
     const r = log[k], dow = parseKey(k).getDay(), kind = kindOf(dow, k);
     const ratio = isGymDay(dow, k) ? ratioOf(r, kind) : 0;
-    const done = isGymDay(dow, k) ? gymOK(r) : !!(r?.backup || sessionCount(r));
-    const home = !!r?.backup && !(isGymDay(dow, k) && ratio >= .5);
+    const done = (isGymDay(dow, k) ? gymOK(r) : !!(r?.backup || sessionCount(r))) || !!r?.yoga?.done;
+    const home = !!(r?.backup || r?.yoga?.done) && !(isGymDay(dow, k) && ratio >= .5);   // 집 운동·요가 = 대체(연한 채움+점선)
     let box;
     const tag = t => `<div style="height:28px;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--dim)">${t}</div>`;
     if(kind === "rest" && !done) box = tag("휴");
@@ -2108,7 +2108,7 @@ function renderTrend(){
       <div style="font-size:8px;line-height:11px;height:11px;color:${HC.gym.fg}">${yoga}</div></div>`;
   };
   const wk7 = view.filter(k => k > addDays(keyOf(new Date()), -7));
-  const gym7 = wk7.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && (log[k]?.backup || sessionCount(log[k]))); }).length;
+  const gym7 = wk7.filter(k => didWorkout(log[k])).length;   // 헬스·세션·집 운동·요가 모두 1회
   document.getElementById("gchart").innerHTML = view.length
     ? `<div class="hscroll" data-sync="1"><div style="display:flex;align-items:flex-end;width:${chartW(view.length)}px;padding-left:${CH.pad}px;box-sizing:border-box">` + view.map(gcell).join("") + `</div></div>
 `
@@ -2161,7 +2161,7 @@ function renderTrend(){
   // 범례·요약은 카드 맨 아래 한곳에 (그래프마다 두면 한 화면에 안 들어간다)
   const nw = s => `<span style="white-space:nowrap">${s}</span>`;
   document.getElementById("tlegend").innerHTML = view.length ? `<div class="muted" style="font-size:10.5px;line-height:1.7;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
-      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 대체`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 안 한 날`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
+      <div>${nw(`운동 <b style="color:${HC.gym.fg}">최근 7일 ${gym7}회</b>`)} · ${nw(`<span style="color:${HC.gym.solid}">■</span> 헬스(높을수록 세트↑)`)} ${nw(`<span style="color:${HC.gym.fg}">▣</span> 집 운동·요가`)} ${nw(`<span style="color:${HC.gym.fg}">□</span> 안 한 날`)} ${nw("쉼=회복·휴식")} ${nw("휴=월요일")}</div>
       <div>${nw(`단백질 <span style="color:${HC.prot.fg}">┅</span> 목표 ${GOAL}g`)} · ${nw(`배변 <b style="color:${HC.stool.fg}">${sgap===null?"정상 기록 없음":sgap===0?"오늘 정상":`정상 후 ${sgap}일`}</b>`)} ${nw(`<span style="color:${HC.stool.solid}">■</span> 정상`)} ${nw(`<span style="color:${HC.stool.fg}">▣</span> 딱딱`)} ${nw(`<span style="color:${HC.stool.fg}">□</span> 무름`)}</div>
       <div>${nw(`수면 <b style="color:${HC.sleep.fg}">${sl7avg === null ? "기록 없음" : `최근 7일 평균 ${sl7avg}시간`}</b>`)} · ${nw(`<span style="color:${HC.sleep.fg}">┅</span> ${SLEEP_GOAL}시간`)} · ${nw(`잘 때 속 <span style="color:${HC.digest.solid}">■</span> 편함`)} ${nw(`<span style="color:${HC.digest.fg}">▣</span> 조금 남음`)} ${nw(`<span style="color:${HC.digest.fg}">□</span> 더부룩`)}</div>
     </div>` : "";
@@ -2450,7 +2450,7 @@ function renderHistory(days, todayKey){
     const ps = ks.filter(k => k !== todayKey).map(k => proteinOf(log[k])).filter(g => g > 0);
     const avgP = ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
     const hit = ps.filter(p => p >= GOAL).length;
-    const gymN = ks.filter(k => { const d = parseKey(k).getDay(); return (isGymDay(d) && gymOK(log[k])) || (!isGymDay(d) && log[k]?.backup); }).length;
+    const gymN = ks.filter(k => k >= FLEX_FROM ? didWorkout(log[k]) : ((isGymDay(parseKey(k).getDay()) && gymOK(log[k])) || (!isGymDay(parseKey(k).getDay()) && log[k]?.backup))).length;   // 11/3~ 요가·집 운동도 1회
     const st = ks.filter(k => log[k]?.stool?.type);
     const stOK = st.filter(k => log[k].stool.type === "normal").length;
     const ws = ks.filter(k => log[k]?.bodyWeight).slice().reverse();
