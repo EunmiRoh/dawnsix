@@ -636,10 +636,10 @@ const WORKOUT_PLAN = [{ dow:2, t:"19:30" }, { dow:4, t:"19:30" }, { dow:6, t:"10
 const SNACK_GOAL = 3;
 const didWorkout = r => !!(r && (gymOK(r) || r.backup || r.yoga?.done || (r.snack || 0) >= SNACK_GOAL || (r.session && (r.session.am || r.session.pm))));   // 11/10: 옥주현요가도 1회
 // 하루 노력 5가지 (11/9 사용자: "적게 먹기(마운자로 때만큼)·운동·단백질·수분… 하루하루 전날보다 노력했네요")
-const WATER_GOAL = 6;   // 355ml 텀블러 6번 — 캘린더 물 알림(10:00~17:30, 90분 간격 6회)과 같음
 const EAT = [["less","마운자로 때만큼"],["normal","보통"],["more","많이"]];
 // 사용자 추가: 아침 올리브유 + 고체 레몬으로 시작, 배변 유지(변비약으로 개선), 더부룩한 채로 자지 않기
-const effortOf = r => [!!r?.morn, didWorkout(r), r?.eat === "less", proteinOf(r) >= GOAL, (r?.water || 0) >= WATER_GOAL, isGoodStool(r), r?.sleep?.digest === "ok"];
+// 11/13: 물 마시기 빠짐 — 남편 의견(억지로 많이 마시면 신장에 부담, 마시고 싶을 때 마시기). r.water 기록은 남겨 둠
+const effortOf = r => [!!r?.morn, didWorkout(r), r?.eat === "less", proteinOf(r) >= GOAL, isGoodStool(r), r?.sleep?.digest === "ok"];
 const effortN = r => effortOf(r).filter(Boolean).length;
 // 점심·저녁 (11/9 사용자 요청) — 메뉴·칼로리 대신 "언제·어떤 종류"만 눌러서 다음 날 체중·잘 때 속과 연결
 const FOOD_KIND = [["home","집밥·도시락"],["out","외식·배달"],["noodle","면·국물"],["light","간단히"]];
@@ -688,7 +688,7 @@ function foodCard(r){
   h += `<input class="inp" data-memo placeholder="메모 (선택) — 예: 사발면 반 개, 국물까지" style="width:100%;margin-top:10px;height:36px;font-size:13px" value="${(f.memo || "").replace(/"/g, "&quot;")}">`;
   const fl = foodFlags(r), tips = [];
   if(fl.noodle) tips.push("면·국물은 국물을 남기면 다음 날 붓기가 훨씬 덜해요.");
-  if(fl.late || fl.night) tips.push("늦게 먹은 날은 물 한 잔 더, 잠들기까지 시간을 두세요.");
+  if(fl.late || fl.night) tips.push("늦게 먹은 날은 잠들기까지 시간을 두세요.");
   if(tips.length) h += `<div style="font-size:12px;margin-top:8px;color:${HC.prot.fg}">${tips.join(" ")}</div>`;
   const pat = foodPatterns();
   h += `<div style="margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:12px"><span class="muted">내 패턴</span>` +
@@ -743,7 +743,7 @@ function dailyReview(key){
   if(foodHas(ry)){
     const fl = foodFlags(ry), why = [fl.late && "늦은 저녁", fl.night && "야식", fl.noodle && "면·국물"].filter(Boolean);
     rows.push(["어제 식사", `<span style="font-weight:500;font-size:12px">${foodSummary(ry)}</span>`,
-      why.length ? `${why.join("·")} — ${!isNaN(w0) && !isNaN(w1) && w0 - w1 >= .3 ? "오늘 아침 체중이 오른 이유예요(물 무게). 물 많이 마시면 빠져요." : "다음 날 붓기 쉬워요. 오늘은 물 한 번 더."}` : `가볍게 잘 먹었어요.`]);
+      why.length ? `${why.join("·")} — ${!isNaN(w0) && !isNaN(w1) && w0 - w1 >= .3 ? "오늘 아침 체중이 오른 이유예요(물 무게). 짠 음식만 피하면 2~3일 안에 빠져요." : "다음 날 붓기 쉬워요. 오늘은 싱겁게."}` : `가볍게 잘 먹었어요.`]);
   }
   const sh = sleepHoursOf(key), dg = ry?.sleep?.digest;
   if(sh !== null || dg){
@@ -756,7 +756,7 @@ function dailyReview(key){
 
   // 3) 오늘 노력 5가지 — 운동·단백질·저녁은 기록으로 저절로, 먹은 양·물은 여기서 바로 누름
   const plan = WORKOUT_PLAN.find(p => p.dow === parseKey(key).getDay());
-  const ef = effortOf(r), n = ef.filter(Boolean).length, ny = effortN(ry), pt = proteinOf(r), wt = r?.water || 0;
+  const ef = effortOf(r), n = ef.filter(Boolean).length, ny = effortN(ry), pt = proteinOf(r);
   const pill = (on, attr, label) => `<button ${attr} style="padding:4px 9px;border-radius:999px;font-size:12px;white-space:nowrap;${on ? `background:${HC.gym.solid};color:#fff;border:1px solid ${HC.gym.solid}` : `background:${HC.gym.bg};color:${HC.gym.fg};border:1px solid transparent`}">${label}</button>`;
   const items = [
     [ef[0], "아침 시작", [0, 6].includes(parseKey(key).getDay()) ? `올리브유 + 고체 레몬 — 주말 늦잠이어도 일어나자마자` : `올리브유 + 고체 레몬`, `<div style="display:flex;gap:5px;margin-top:5px">${pill(!!r?.morn, `data-morn="1"`, r?.morn ? "✓ 했어요" : "했어요")}</div>`],
@@ -765,9 +765,8 @@ function dailyReview(key){
        <div style="display:flex;gap:5px;margin-top:5px">${pill(false, `data-snack="-1"`, "−")}${pill(false, `data-snack="1"`, "+ 한 번 했어요")}</div>`],
     [ef[2], "적게 먹기", `오늘 먹은 양`, `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${EAT.map(([id, l]) => pill(r?.eat === id, `data-eat="${id}"`, l)).join("")}</div>`],
     [ef[3], "단백질", `${GOAL}g — 지금 ${pt}g · 끼니마다 단백질 먼저`, ""],
-    [ef[4], "물", `텀블러 ${WATER_GOAL}번 — 지금 <b>${wt}</b>번`, `<div style="display:flex;gap:5px;margin-top:5px">${pill(false, `data-water="-1"`, "−")}${pill(false, `data-water="1"`, "+ 한 번 마심")}</div>`],
-    [ef[5], "배변", `변비약 식후 1알 챙기기 — 배변 카드에 기록`, ""],
-    [ef[6], "속 편하게 자기", `저녁 일찍 가볍게 · 늦게 먹게 되면 국물·야식은 참기 → 1시 전에 눕기 (잘 때 속 "편함")`, ""]
+    [ef[4], "배변", `변비약 식후 1알 챙기기 — 배변 카드에 기록`, ""],
+    [ef[5], "속 편하게 자기", `저녁 일찍 가볍게 · 늦게 먹게 되면 국물·야식은 참기 → 1시 전에 눕기 (잘 때 속 "편함")`, ""]
   ];
   const cmp = n > ny ? `어제보다 <b>${n - ny}개 더</b> 노력했어요 👏` : n === ny && n ? `어제만큼 하고 있어요` : `아직 하루가 남았어요 — 하나만 더`;
   h += `<div style="margin-top:14px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:var(--dim)">오늘 노력</span>
@@ -789,7 +788,6 @@ function dailyReview(key){
   c.querySelectorAll("[data-morn]").forEach(b => b.onclick = () => mutate(x => { x.morn = !x.morn; }));
   c.querySelectorAll("[data-eat]").forEach(b => b.onclick = () => mutate(x => { x.eat = x.eat === b.dataset.eat ? null : b.dataset.eat; }));
   c.querySelectorAll("[data-snack]").forEach(b => b.onclick = () => mutate(x => { x.snack = Math.max(0, Math.min(30, (x.snack || 0) + (+b.dataset.snack))); }));
-  c.querySelectorAll("[data-water]").forEach(b => b.onclick = () => mutate(x => { x.water = Math.max(0, Math.min(15, (x.water || 0) + (+b.dataset.water))); }));
   return c;
 }
 // 어둡고 추운 날 — 헬스장 대신 집에서 짧게 (집 탭 "짧게" 코스를 바로 시작, 끝나면 대체 운동으로 체크)
