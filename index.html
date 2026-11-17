@@ -619,7 +619,7 @@ const kindOf = (dow, key) => (key && key < FLEX_FROM)
   : (dow === 1 ? "rest" : "gym");
 // 가벼운 날 종목: 수·일 = 하체+등 / 금 = 가슴+햄스트링
 const lightSet = dow => (dow === 5) ? ["chest","curl"] : ["leg","lat"];
-const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null}, eat:null, water:0, morn:false, food:null, snack:0 });
+const blank = () => ({ sets:{}, weights:{}, diff:{}, pick:{}, yoga:{part:null,done:false}, meals:{}, bodyWeight:"", arrived:false, backup:false, stool:{type:null,amount:null}, cycle:{start:false,end:false}, session:{am:false,pm:false}, shot:{done:false,dose:null}, inbody:null, labs:null, off:false, lax:null, laxAt:{am:false,noon:false,pm:false}, sleep:{bed:"",wake:"",digest:null}, eat:null, water:0, morn:false, food:null, snack:0, signs:[], girth:null });
 const proteinOf = r => MEALS.reduce((s,m)=> s + ((r?.meals?.[m.id]||0) * m.g), 0);
 const ratioOf = (r,kind) => {
   if(!r) return 0;
@@ -701,6 +701,56 @@ function foodCard(r){
   c.querySelectorAll("[data-at]").forEach(b => b.onclick = () => ed(g => { g.at = g.at === b.dataset.at ? null : b.dataset.at; }));
   const mi = c.querySelector("[data-memo]");
   mi.onchange = () => ed(g => { g.memo = mi.value.trim().slice(0, 120); });
+  return c;
+}
+// 몸 신호·둘레 (11/17 사용자: 생리가 늦어지고(10/14 시작 → 34일째) 릴스의 "여성호르몬 넘칠 때"가 내 얘기 같다,
+// 엉덩이·허벅지가 찐 것 같고 지난주부터 얼굴에 트러블이 많이 났다 → 산부인과에 보여 줄 기록 + 느낌 대신 줄자 숫자)
+const SIGNS = [["acne","얼굴 트러블"],["swell","붓기"],["breast","가슴 통증"],["mood","예민·불안"],["head","두통"]];
+const SIGN_LABEL = Object.fromEntries(SIGNS);
+const GIRTH = [["waist","허리"],["hip","엉덩이"],["thigh","허벅지"]];
+const girthHas = r => !!(r && r.girth && GIRTH.some(([id]) => parseFloat(r.girth[id]) > 0));
+function signsCard(r){
+  const c = document.createElement("div"); c.className = "card"; c.style.marginTop = "12px";
+  const on = r.signs || [];
+  const pill = (sel, id, label) => `<button data-sign="${id}" style="padding:6px 11px;border-radius:999px;font-size:13px;white-space:nowrap;${sel ? `background:${HC.cycle.solid};color:#fff;border:1px solid ${HC.cycle.solid}` : `background:${HC.cycle.bg};color:${HC.cycle.fg};border:1px solid transparent`}">${label}</button>`;
+  let h = `<div><b style="font-size:14px">몸 신호</b><div class="muted" style="font-size:12px">오늘 있었던 것만 누르기 — 생리 주기와 같이 쌓여 산부인과 갈 때 보여 줄 기록이 돼요</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${SIGNS.map(([id, l]) => pill(on.includes(id), id, l)).join("")}</div>`;
+  // 최근 14일 요약 + 생리 며칠째
+  const from = addDays(dateKey, -13), cnt = {};
+  Object.keys(log).filter(k => k >= from && k <= dateKey).forEach(k => (log[k].signs || []).forEach(id => cnt[id] = (cnt[id] || 0) + 1));
+  const sum = SIGNS.filter(([id]) => cnt[id]).map(([id, l]) => `${l} ${cnt[id]}일`);
+  const ci = cycleInfo(dateKey), lines = [];
+  if(ci){ const d = dayDiff(dateKey, ci.last) + 1; lines.push(`생리 시작 후 <b>${d}일째</b>${d > ci.avg + 3 ? ` <span style="color:${HC.cycle.fg}">· 평소(${ci.avg}일)보다 늦어요</span>` : ""}`); }
+  if(sum.length) lines.push(`최근 2주: ${sum.join(" · ")}`);
+  if(lines.length) h += `<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.7">${lines.join("<br>")}</div>`;
+  c.innerHTML = h;
+  c.querySelectorAll("[data-sign]").forEach(b => b.onclick = () => mutate(x => { const a = x.signs || (x.signs = []), i = a.indexOf(b.dataset.sign); i >= 0 ? a.splice(i, 1) : a.push(b.dataset.sign); }));
+  return c;
+}
+function girthCard(r){
+  const c = document.createElement("div"); c.className = "card"; c.style.marginTop = "12px";
+  const g = r.girth || {};
+  const past = Object.keys(log).filter(k => k < dateKey && girthHas(log[k])).sort();
+  const prev = past.length ? log[past[past.length - 1]].girth : null, first = past.length ? log[past[0]].girth : null;
+  let h = `<div><b style="font-size:14px">둘레 (cm)</b><div class="muted" style="font-size:12px">주 1회 같은 요일 아침, 줄자로 — 느낌 대신 숫자로 봐요. 생리 끝난 뒤 값을 기준으로</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px">` +
+    GIRTH.map(([id, l]) => {
+      const v = parseFloat(g[id]), pv = prev ? parseFloat(prev[id]) : NaN, d = v - pv;
+      const diff = !isNaN(v) && !isNaN(pv) ? `<span style="color:${d > 0 ? "var(--rose)" : d < 0 ? HC.cycle.fg : "var(--dim)"}">${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d).toFixed(1)}</span>` : "";
+      return `<label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim)">${l} ${diff}
+        <input class="inp" data-girth="${id}" type="number" inputmode="decimal" step="0.5" min="20" max="200" placeholder="${prev && prev[id] ? prev[id] : "cm"}" value="${g[id] || ""}" style="width:100%;height:40px;font-size:15px;text-align:center"></label>`;
+    }).join("") + `</div>`;
+  if(past.length){
+    const last = past.slice(-4).reverse().map(k => `${fmtKey(k)} ${GIRTH.map(([id]) => log[k].girth[id] || "—").join(" / ")}`);
+    h += `<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.7">지난 기록 (허리 / 엉덩이 / 허벅지)<br>${last.join("<br>")}` +
+      (past.length > 1 && first ? `<br>처음(${fmtKey(past[0])}) 대비: ${GIRTH.map(([id, l]) => { const a = parseFloat(first[id]), b = parseFloat(prev[id]); return !isNaN(a) && !isNaN(b) ? `${l} ${b - a > 0 ? "+" : b - a < 0 ? "−" : "±"}${Math.abs(b - a).toFixed(1)}` : ""; }).filter(Boolean).join(" · ")}` : "") + `</div>`;
+  }
+  c.innerHTML = h;
+  c.querySelectorAll("[data-girth]").forEach(i => i.onchange = () => mutate(x => {
+    const v = parseFloat(i.value), gg = Object.assign({ waist:"", hip:"", thigh:"" }, x.girth || {});
+    gg[i.dataset.girth] = v > 0 ? String(Math.round(v * 2) / 2) : "";
+    x.girth = GIRTH.some(([id]) => gg[id]) ? gg : null;
+  }));
   return c;
 }
 // 오늘 시작 점검 카드 — 지키는 선(휴약 전 1주 평균 +1kg) · 어제 돌아보기 · 오늘 할 일 3개
@@ -809,6 +859,7 @@ function isEmptyDay(r, countInbody){
   if(r.bodyWeight || r.arrived || r.backup || r.off || r.lax > 0) return false;
   if(r.sleep && (r.sleep.bed || r.sleep.wake || r.sleep.digest)) return false;
   if(r.eat || r.water > 0 || r.morn || r.snack > 0) return false;
+  if((r.signs && r.signs.length) || girthHas(r)) return false;
   if(foodHas(r)) return false;
   if(r.yoga && r.yoga.done) return false;
   if(r.stool && r.stool.type) return false;
@@ -1218,7 +1269,9 @@ function rec(){
   if(r.eat === undefined) r.eat = null;      // 식사량 less|normal|more (11/9~)
   if(r.water === undefined) r.water = 0;     // 물 컵 수 (355ml 텀블러, 11/9~)
   if(r.morn === undefined) r.morn = false;   // 아침 루틴 — 올리브유 + 고체 레몬 (11/9~)
-  if(r.snack === undefined) r.snack = 0;     // 막간 운동 횟수 — 계단(10층↔14층)·스쿼트 등 (11/12~)
+  if(r.snack === undefined) r.snack = 0;
+  r.signs = r.signs || [];                   // 몸 신호 (11/17~) — SIGNS id 배열
+  if(r.girth === undefined) r.girth = null;  // 둘레 cm { waist, hip, thigh } (11/17~)     // 막간 운동 횟수 — 계단(10층↔14층)·스쿼트 등 (11/12~)
   if(r.food === undefined) r.food = null;    // 점심·저녁 한 번 누르기 기록 (11/9~) — foodRec()
   return r;
 }
@@ -1716,6 +1769,8 @@ function renderToday(){
   }
   cy.appendChild(cinfo);
   box.appendChild(cy);
+  box.appendChild(signsCard(r));
+  box.appendChild(girthCard(r));
 
   // 마운자로 주사
   const sh = document.createElement("div"); sh.className = "card"; sh.style.marginTop = "12px";
@@ -2420,6 +2475,8 @@ function renderHistory(days, todayKey){
     else if(!isGymDay(dow, k) && sl) c.push(chip("헬스 " + sl, "gym"));
     if(r.yoga?.done) c.push(chip("요가", "gym"));
     if(r.snack) c.push(chip(`막간 ${r.snack}번`, "gym"));
+    if(r.signs && r.signs.length) c.push(chip(r.signs.map(id => SIGN_LABEL[id]).filter(Boolean).join("·"), "cycle"));
+    if(girthHas(r)) c.push(chip(`둘레 ${GIRTH.map(([id]) => r.girth[id] || "—").join("/")}`, "cycle"));
     if(r.backup) c.push(chip(isGymDay(dow, k) ? "대체" : "집운동", "gym"));
     if(r.off) c.push(chip("회복·휴식"));
     const slh = sleepHoursOf(k);
