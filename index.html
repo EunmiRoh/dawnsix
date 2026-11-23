@@ -317,6 +317,7 @@
       <div class="tcol tside">
         <div class="tblk" style="order:3"><h2>생리 주기</h2><div class="card" id="cchart"></div></div>
         <div class="tblk" style="order:4"><h2>인바디</h2><div class="card" id="ibchart"></div></div>
+        <div class="tblk" style="order:4"><h2>둘레</h2><div class="card" id="girthchart"></div></div>
         <div class="tblk" style="order:5"><h2>피검사</h2><div class="card" id="labchart"></div></div>
         <div class="tblk" style="order:6"><h2>마운자로</h2><div class="card" id="mchart"></div></div>
       </div>
@@ -2378,6 +2379,7 @@ function renderTrend(){
   }
 
   renderLabs();
+  renderGirth();
 
   const si2 = shotInfo(keyOf(new Date()));
   const mc = document.getElementById("mchart");
@@ -2582,6 +2584,59 @@ function renderHistory(days, todayKey){
   });
 }
 
+// 둘레 추이 (11/23 사용자: "추이에서 비교는 어디서 되는 거야?") — 처음 잰 날 대비 변화(cm)를 한 그래프에,
+// 생리 시작일 세로 점선·붓기 표시를 같이 그려 "부어서 커진 건지" 보이게. 아래 표는 날짜별 실측값과 직전 대비.
+const GIRTH_COLOR = { waist: () => HC.ib.solid, hip: () => HC.prot.solid, thigh: () => HC.cycle.solid };
+function renderGirth(){
+  const el = document.getElementById("girthchart");
+  if(!el) return;
+  const days = Object.keys(log).filter(k => girthHas(log[k])).sort();
+  if(!days.length){ el.innerHTML = `<div class="muted" style="font-size:13px">오늘 탭 "둘레 (cm)" 칸에 허리·엉덩이·허벅지를 넣으면 여기서 비교돼요. 주 1회, 같은 요일·같은 시간대에.</div>`; return; }
+  const val = (k, id) => { const v = parseFloat(log[k].girth[id]); return isNaN(v) ? null : v; };
+  const base = {}; GIRTH.forEach(([id]) => { const k = days.find(k => val(k, id) !== null); base[id] = k ? val(k, id) : null; });
+  const sg = d => (d > 0 ? "+" : d < 0 ? "−" : "±") + Math.abs(d).toFixed(1);
+  let h = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px">` + GIRTH.map(([id, l]) => {
+      const last = [...days].reverse().find(k => val(k, id) !== null), v = last ? val(last, id) : null, d = v !== null && base[id] !== null ? v - base[id] : null;
+      return `<span><i style="display:inline-block;width:10px;height:3px;border-radius:2px;background:${GIRTH_COLOR[id]()};vertical-align:middle;margin-right:4px"></i>${l} <b>${v ?? "—"}</b>${d !== null && days.length > 1 ? ` <span style="color:${d > 0 ? "var(--rose)" : d < 0 ? HC.ib.fg : "var(--dim)"}">(${sg(d)})</span>` : ""}</span>`;
+    }).join("") + `</div>`;
+  if(days.length > 1){
+    // 그래프 — x: 첫 측정 ~ 마지막 측정(날짜 비례), y: 처음 대비 변화(cm, 최소 ±3)
+    const W = 320, H = 140, L = 30, Rr = 14, T = 14, B = 32;
+    const t0 = parseKey(days[0]).getTime(), t1 = Math.max(parseKey(days[days.length - 1]).getTime(), t0 + 7 * 864e5);
+    const x = k => L + (parseKey(k).getTime() - t0) / (t1 - t0) * (W - L - Rr);
+    let mx = 3; days.forEach(k => GIRTH.forEach(([id]) => { const v = val(k, id); if(v !== null && base[id] !== null) mx = Math.max(mx, Math.abs(v - base[id])); }));
+    mx = Math.ceil(mx);
+    const y = d => T + (mx - d) / (2 * mx) * (H - T - B);
+    let svg = `<line x1="${L}" x2="${W - Rr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="3 3"/>` +
+      `<text x="${L - 4}" y="${y(mx) + 4}" font-size="9" fill="var(--dim)" text-anchor="end">+${mx}</text>` +
+      `<text x="${L - 4}" y="${y(0) + 3}" font-size="9" fill="var(--dim)" text-anchor="end">0</text>` +
+      `<text x="${L - 4}" y="${y(-mx) + 3}" font-size="9" fill="var(--dim)" text-anchor="end">−${mx}</text>`;
+    cycleStarts().filter(k => k >= days[0] && k <= keyOf(new Date(t1))).forEach(k => {
+      svg += `<line x1="${x(k)}" x2="${x(k)}" y1="${T - 6}" y2="${H - B}" stroke="${HC.cycle.solid}" stroke-dasharray="2 3"/><text x="${x(k)}" y="${T - 8}" font-size="9" fill="${HC.cycle.fg}" text-anchor="middle">생리</text>`;
+    });
+    GIRTH.forEach(([id]) => {
+      const pts = days.filter(k => val(k, id) !== null && base[id] !== null).map(k => [x(k), y(val(k, id) - base[id])]);
+      if(pts.length > 1) svg += `<polyline fill="none" stroke="${GIRTH_COLOR[id]()}" stroke-width="2" points="${pts.map(p => p.join(",")).join(" ")}"/>`;
+      pts.forEach(p => svg += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${GIRTH_COLOR[id]()}"/>`);
+    });
+    days.forEach(k => {
+      svg += `<text x="${x(k)}" y="${H - 4}" font-size="9" fill="var(--dim)" text-anchor="middle">${fmtKey(k)}</text>`;
+      if((log[k].signs || []).includes("swell")) svg += `<text x="${x(k)}" y="${H - B + 13}" font-size="8" fill="${HC.cycle.fg}" text-anchor="middle">붓기</text>`;
+    });
+    h += `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin-top:8px;display:block">${svg}</svg>
+      <div class="muted" style="font-size:11px">처음 잰 날(${fmtKey(days[0])}) 대비 변화(cm) · 세로 점선 = 생리 시작</div>`;
+  }
+  // 표 — 최근 8회
+  h += `<div style="margin-top:10px;font-size:12px">` + [...days].reverse().slice(0, 8).map((k, i, arr) => {
+    const prev = arr[i + 1];
+    const cell = id => { const v = val(k, id), pv = prev ? val(prev, id) : null;
+      return `<span style="display:inline-block;min-width:64px">${v ?? "—"}${v !== null && pv !== null ? ` <span style="font-size:10px;color:${v - pv > 0 ? "var(--rose)" : v - pv < 0 ? HC.ib.fg : "var(--dim)"}">${sg(v - pv)}</span>` : ""}</span>`; };
+    const sw = (log[k].signs || []).includes("swell");
+    return `<div class="row" style="padding:4px 0;border-top:${i ? "1px solid var(--line)" : "0"}"><span class="muted" style="min-width:44px">${fmtKey(k)}${sw ? ` <span style="color:${HC.cycle.fg};font-size:10px">붓기</span>` : ""}</span><span>${GIRTH.map(([id]) => cell(id)).join("")}</span></div>`;
+  }).join("") + `<div class="muted" style="font-size:11px;margin-top:4px">허리 / 엉덩이 / 허벅지 (cm)</div></div>`;
+  h += `<div class="muted" style="font-size:12px;margin-top:8px">${days.length === 1 ? "한 번 더 재면 그래프로 비교돼요. " : ""}주 1회, 같은 요일·같은 시간대(아침 추천)에. 생리 끝난 뒤 값이 진짜 기준이에요.</div>`;
+  el.innerHTML = h;
+}
 function renderLabs(){
   const el = document.getElementById("labchart");
   const ld = labDays();
